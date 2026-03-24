@@ -1,2 +1,19 @@
+# IDEs and Environments
 .idea/
 .venv/
+venv/
+env/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller Build Artifacts
+build/
+dist/
+*.spec
+
+# OS Generated Files
+.DS_Store
+Thumbs.db

@@ -79,6 +79,9 @@ class AddinManagerApp:
         ttk.Button(tab8, text="Open Network Path", command=lambda: self.open_in_explorer(NETWORK_PATH_8)).grid(row=0,
                                                                                                                column=2,
                                                                                                                padx=5)
+        ttk.Button(tab8, text="Parent", command=lambda: self.open_in_explorer(NETWORK_PATH_8)).grid(row=0,
+                                                                                                               column=3,
+                                                                                                               padx=5)
 
         # Tab 2: .Net 6.0
         tab6 = ttk.Frame(self.notebook, padding=(10, 10))
