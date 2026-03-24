@@ -1,6 +1,8 @@
 import winreg
 import os
+import subprocess
 from config import REG_PATH
+
 
 def scan_registry_for_ninetyone():
     try:
@@ -21,15 +23,23 @@ def scan_registry_for_ninetyone():
     except Exception as e:
         return False, str(e)
 
+
 def open_regedit_at_path():
     try:
-        target_key = r"Computer\HKEY_CURRENT_USER\\" + REG_PATH
-        applet_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Applets\Regedit", 0, winreg.KEY_SET_VALUE)
+        # Fix 1: Properly format the path with a single backslash
+        target_key = f"Computer\\HKEY_CURRENT_USER\\{REG_PATH}"
+
+        # Update Regedit's LastKey memory
+        applet_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                    r"Software\Microsoft\Windows\CurrentVersion\Applets\Regedit", 0,
+                                    winreg.KEY_SET_VALUE)
         winreg.SetValueEx(applet_key, "LastKey", 0, winreg.REG_SZ, target_key)
         winreg.CloseKey(applet_key)
-        os.startfile("regedit.exe")
+
+        # Fix 2: Use subprocess with the /m flag to force a new instance
+        subprocess.Popen(["regedit.exe", "/m"])
         return True, ""
     except PermissionError:
-        return False, "Run as Administrator required."
+        return False, "Run as Administrator required to modify Regedit's LastKey memory."
     except Exception as e:
         return False, str(e)
