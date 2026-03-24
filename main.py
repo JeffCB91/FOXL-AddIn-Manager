@@ -9,24 +9,31 @@ ENV_FILE_PATH = os.path.expandvars(r"%APPDATA%\NinetyOne - FrontOfficeExcelAddIn
 LOADER_PATH = r"C:\Program Files\Microsoft Office\root\Office16\Library\InvestmentTechExcelAddin"
 LOCAL_TEST_PATH = r"C:\ExcelAddIn\_91ExcelAddIn"
 REG_PATH = r"Software\Microsoft\Office\16.0\excel\options"
-NETWORK_VERSIONS_PATH = r"\\iamldnfs1\GDrive\Depts\Investment IT\Investment Solutions\Software\FrontOfficeExcelAddIn\DotNet8\InvestmentTechExcelAddIn"
+
+# Network Paths
+NETWORK_PATH_8 = r"\\iamldnfs1\GDrive\Depts\Investment IT\Investment Solutions\Software\FrontOfficeExcelAddIn\DotNet8\InvestmentTechExcelAddIn"
+NETWORK_PATH_6 = r"\\iamldnfs1\GDrive\Depts\Investment IT\Investment Solutions\Software\FrontOfficeExcelAddIn\InvestmentTechExcelAddIn"
 
 
 class AddinManagerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("NinetyOne Add-In Manager")
-        self.root.geometry("500x650")  # Increased height for new section
+        self.root.geometry("520x720")  # Increased height to fit tabs and version row
         self.root.resizable(False, False)
 
         # Style configuration
         style = ttk.Style()
         style.theme_use('clam')
 
+        # Variables
+        self.env_var = tk.StringVar()
+        self.current_version_var = tk.StringVar(value="Not set")
+
         self.create_widgets()
         self.load_current_env()
 
-        # Kick off the asynchronous network check
+        # Kick off asynchronous network checks for both paths
         self.fetch_versions_async()
 
     def create_widgets(self):
@@ -34,9 +41,8 @@ class AddinManagerApp:
         env_frame = ttk.LabelFrame(self.root, text="Environment Settings", padding=(10, 10))
         env_frame.pack(fill="x", padx=10, pady=5)
 
+        # ENV Row
         ttk.Label(env_frame, text="Current ENV:").grid(row=0, column=0, sticky="w", pady=5)
-
-        self.env_var = tk.StringVar()
         self.env_dropdown = ttk.Combobox(
             env_frame,
             textvariable=self.env_var,
@@ -45,27 +51,46 @@ class AddinManagerApp:
             width=20
         )
         self.env_dropdown.grid(row=0, column=1, padx=10, pady=5)
-
         ttk.Button(env_frame, text="Update ENV", command=self.save_env).grid(row=0, column=2, padx=5)
 
-        # --- Network Versions Section ---
-        versions_frame = ttk.LabelFrame(self.root, text="Network Versions", padding=(10, 10))
-        versions_frame.pack(fill="x", padx=10, pady=5)
+        # VERSION Row
+        ttk.Label(env_frame, text="Current VERSION:").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(env_frame, textvariable=self.current_version_var, font=("TkDefaultFont", 9, "bold")).grid(row=1,
+                                                                                                            column=1,
+                                                                                                            sticky="w",
+                                                                                                            padx=10,
+                                                                                                            pady=5)
 
-        ttk.Label(versions_frame, text="Available:").grid(row=0, column=0, sticky="w", pady=5)
+        # --- Network Versions Section (Tabs) ---
+        notebook_frame = ttk.Frame(self.root)
+        notebook_frame.pack(fill="x", padx=10, pady=5)
 
-        self.version_var = tk.StringVar()
-        self.version_var.set("Checking network...")
-        self.version_dropdown = ttk.Combobox(
-            versions_frame,
-            textvariable=self.version_var,
-            state="readonly",
-            width=20
-        )
-        self.version_dropdown.grid(row=0, column=1, padx=10, pady=5)
+        self.notebook = ttk.Notebook(notebook_frame)
+        self.notebook.pack(fill="x", expand=True)
 
-        ttk.Button(versions_frame, text="Open Network Path",
-                   command=lambda: self.open_in_explorer(NETWORK_VERSIONS_PATH)).grid(row=0, column=2, padx=5)
+        # Tab 1: .Net 8.0
+        tab8 = ttk.Frame(self.notebook, padding=(10, 10))
+        self.notebook.add(tab8, text=".Net 8.0")
+
+        ttk.Label(tab8, text="Available:").grid(row=0, column=0, sticky="w", pady=5)
+        self.version8_var = tk.StringVar(value="Checking network...")
+        self.version8_dropdown = ttk.Combobox(tab8, textvariable=self.version8_var, state="readonly", width=22)
+        self.version8_dropdown.grid(row=0, column=1, padx=10, pady=5)
+        ttk.Button(tab8, text="Open Network Path", command=lambda: self.open_in_explorer(NETWORK_PATH_8)).grid(row=0,
+                                                                                                               column=2,
+                                                                                                               padx=5)
+
+        # Tab 2: .Net 6.0
+        tab6 = ttk.Frame(self.notebook, padding=(10, 10))
+        self.notebook.add(tab6, text=".Net 6.0")
+
+        ttk.Label(tab6, text="Available:").grid(row=0, column=0, sticky="w", pady=5)
+        self.version6_var = tk.StringVar(value="Checking network...")
+        self.version6_dropdown = ttk.Combobox(tab6, textvariable=self.version6_var, state="readonly", width=22)
+        self.version6_dropdown.grid(row=0, column=1, padx=10, pady=5)
+        ttk.Button(tab6, text="Open Network Path", command=lambda: self.open_in_explorer(NETWORK_PATH_6)).grid(row=0,
+                                                                                                               column=2,
+                                                                                                               padx=5)
 
         # --- Paths & Explorer Section ---
         paths_frame = ttk.LabelFrame(self.root, text="Local Directories", padding=(10, 10))
@@ -73,10 +98,8 @@ class AddinManagerApp:
 
         ttk.Button(paths_frame, text="Open Env File Folder",
                    command=lambda: self.open_in_explorer(os.path.dirname(ENV_FILE_PATH))).pack(fill="x", pady=2)
-
         ttk.Button(paths_frame, text="Open Loader Path",
                    command=lambda: self.open_in_explorer(LOADER_PATH)).pack(fill="x", pady=2)
-
         ttk.Button(paths_frame, text="Open Local Test Path",
                    command=lambda: self.open_in_explorer(LOCAL_TEST_PATH)).pack(fill="x", pady=2)
 
@@ -93,7 +116,7 @@ class AddinManagerApp:
         ttk.Button(reg_btn_frame, text="Open Regedit Here", command=self.open_regedit).pack(side="right", fill="x",
                                                                                             expand=True, padx=(2, 0))
 
-        self.reg_output = scrolledtext.ScrolledText(reg_frame, height=6, width=50, wrap=tk.WORD)
+        self.reg_output = scrolledtext.ScrolledText(reg_frame, height=5, width=50, wrap=tk.WORD)
         self.reg_output.pack(fill="both", expand=True)
 
         # --- Actions Section ---
@@ -110,7 +133,8 @@ class AddinManagerApp:
                 for line in f:
                     if line.startswith("ENV="):
                         self.env_var.set(line.strip().split("=")[1])
-                        break
+                    elif line.startswith("VERSION="):
+                        self.current_version_var.set(line.strip().split("=")[1])
         except Exception as e:
             messagebox.showerror("Read Error", f"Could not read env file:\n{e}")
 
@@ -144,41 +168,36 @@ class AddinManagerApp:
 
     # --- Async Network Check Logic ---
     def fetch_versions_async(self):
-        """Spawns a background thread to check the network path."""
-        # daemon=True ensures the thread dies immediately if you close the app
-        threading.Thread(target=self._check_network_path, daemon=True).start()
+        """Spawns background threads to check both network paths independently."""
+        threading.Thread(target=self._check_network_path,
+                         args=(NETWORK_PATH_8, self.version8_var, self.version8_dropdown), daemon=True).start()
+        threading.Thread(target=self._check_network_path,
+                         args=(NETWORK_PATH_6, self.version6_var, self.version6_dropdown), daemon=True).start()
 
-    def _check_network_path(self):
+    def _check_network_path(self, path, var, dropdown):
         """Runs in the background thread."""
         try:
-            if os.path.exists(NETWORK_VERSIONS_PATH):
+            if os.path.exists(path):
                 # Grab all folders in the directory
-                versions = [d for d in os.listdir(NETWORK_VERSIONS_PATH)
-                            if os.path.isdir(os.path.join(NETWORK_VERSIONS_PATH, d))]
-
-                # Sort them (assuming semantic versioning or alphabetical)
+                versions = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
                 versions.sort(reverse=True)
-
-                # Safely update the UI back on the main thread
-                self.root.after(0, self._update_versions_ui, versions)
+                self.root.after(0, self._update_versions_ui, versions, var, dropdown)
             else:
-                self.root.after(0, self._update_versions_ui_error, "Path not found")
+                self.root.after(0, self._update_versions_ui_error, "Path not found", var, dropdown)
         except Exception:
-            self.root.after(0, self._update_versions_ui_error, "Offline / Access Denied")
+            self.root.after(0, self._update_versions_ui_error, "Offline / Access Denied", var, dropdown)
 
-    def _update_versions_ui(self, versions):
-        """Runs on the main thread to update the Combobox."""
+    def _update_versions_ui(self, versions, var, dropdown):
         if versions:
-            self.version_dropdown['values'] = versions
-            self.version_var.set(versions[0])  # Default to newest/top version
+            dropdown['values'] = versions
+            var.set(versions[0])
         else:
-            self.version_dropdown['values'] = []
-            self.version_var.set("No versions found")
+            dropdown['values'] = []
+            var.set("No versions found")
 
-    def _update_versions_ui_error(self, status_msg):
-        """Runs on the main thread to update the Combobox on failure."""
-        self.version_dropdown['values'] = []
-        self.version_var.set(status_msg)
+    def _update_versions_ui_error(self, status_msg, var, dropdown):
+        dropdown['values'] = []
+        var.set(status_msg)
 
     # --- Utilities ---
     def open_in_explorer(self, path):
