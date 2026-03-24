@@ -15,7 +15,7 @@ class MainWindow:
     def __init__(self, root):
         self.root = root
         self.root.title("FOXL Add-In Manager")
-        self.root.geometry("520x760")
+        self.root.geometry("520x650")
         self.root.resizable(False, False)
 
         ttk.Style().theme_use('clam')
@@ -73,7 +73,9 @@ class MainWindow:
                                                                                     padx=(0, 2))
         ttk.Button(btn_f, text="Open Regedit Here", command=self.do_reg_open).pack(side="right", fill="x", expand=True,
                                                                                    padx=(2, 0))
-        self.reg_out = scrolledtext.ScrolledText(reg_f, height=5, width=50, wrap=tk.WORD)
+
+        # Changed height from 5 to 2
+        self.reg_out = scrolledtext.ScrolledText(reg_f, height=2, width=50, wrap=tk.WORD)
         self.reg_out.pack(fill="both", expand=True)
 
         # --- Action Section ---
