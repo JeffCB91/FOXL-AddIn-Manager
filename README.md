@@ -1,24 +1,37 @@
 # FOXL Add-In Manager
 
-A lightweight, standalone desktop utility built in Python to help developers and users manage their Front Office Excel Add-In environments and configuration paths.
+A lightweight, standalone desktop utility built in Python to help developers and users manage their Front Office Excel Add-In environments, configuration paths, and local test builds.
+
+## Features
+
+* **Dual Interfaces:** Separate build targets for Developers (full config viewing, network scanning) and Users (streamlined environment toggling and zip installation).
+* **Environment Management:** Easily toggle your local `env` file between `Prod`, `UAT`, `Dev`, and `local`.
+* **Zip Build Installer:** Users can browse for a local test `.zip` file, provide a folder name, and the tool will automatically extract the contents to `C:\ExcelAddIn` and repoint the Excel registry to the new build.
+* **Registry Management:** Safely swaps Excel's `OPEN` registry keys to point to test builds, with a one-click "Revert to Standard Loader" safety net.
+* **Excel Process Controls:** Built-in buttons to launch Excel, request a safe close, or forcefully kill hung Excel processes natively.
+* **Version Tracking:** Asynchronously checks network drives for available .Net 8.0 and .Net 6.0 add-in versions.
+* **Config Viewer (Admin):** Dynamically parses and displays the JSON configuration variables for any local or network version.
 
 ## Project Structure
 
-The codebase is modularized to separate the user interface from the business logic:
+The codebase is modularized to separate the user interfaces from the business logic:
 
 ```text
 foxl-manager/
-├── main.py                  # The entry point that launches the app
 ├── config.py                # Stores all hardcoded paths, URLs, and constants
+├── main.py                  # Entry point for the Developer/Admin dashboard
+├── main_user.py             # Entry point for the streamlined User dashboard
 │
 ├── core/                    # Core business logic
 │   ├── env_manager.py       # Reads and writes to the local .env file
 │   ├── scanner.py           # Asynchronously scans network and local directories
-│   ├── registry_ops.py      # Handles Windows Registry scanning
-│   └── system_ops.py        # Helper functions (Explorer, Excel launchers)
+│   ├── registry_ops.py      # Handles Windows Registry scanning and updating
+│   ├── system_ops.py        # Helper functions (Explorer, Excel launchers/killers)
+│   └── zip_ops.py           # Handles zip extraction and file moving
 │
 └── ui/                      # Presentation layer (Tkinter)
-    ├── main_window.py       # The primary dashboard
+    ├── main_window.py       # The Developer dashboard UI
+    ├── user_window.py       # The User configurator UI
     └── config_viewer.py     # The dynamic JSON configuration viewer
 ```
 
@@ -26,42 +39,37 @@ foxl-manager/
 
 To run the script from the source code or build a new executable, you will need:
 * **Python 3.x** installed on your Windows machine.
-* **Windows OS** (This script utilizes `winreg` and `os.startfile`, which are Windows-specific).
+* **Windows OS** (This script utilizes `winreg`, `subprocess`, and `os.startfile`).
 
 ## Installation & Setup
 
 1. Clone or download this repository to your local machine.
 2. Open a terminal in the project directory.
-3. Install the build requirements (PyInstaller):
+3. Install the build requirements:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+## Building the Executables (.exe)
+
+This project supports building two separate executables depending on the target audience.
+
+**1. Building the Admin/Developer Version:**
+Run this command to build the full tool with network scanning and config viewing:
 ```bash
-  pip install -r requirements.txt
+pyinstaller --onefile --windowed --name "foxl_addin_admin" main.py
 ```
 
-## Running from Source
-
-To run the application directly via Python during development:
+**2. Building the Standard User Version:**
+Run this command to build the restricted version focused purely on environment switching and local zip installations:
 ```bash
-  python main.py
+pyinstaller --onefile --windowed --name "foxl_addin_user" main_user.py
 ```
 
-## Building the Executable (.exe)
-
-To share this tool with team members who do not have Python installed, you can compile it into a single standalone `.exe` file. 
-
-Run the following command in your terminal from the root `foxl-manager` directory:
-```bash
-  pyinstaller --onefile --windowed --name "foxl_addin_manager" main.py
-```
-
-* `--onefile`: Packages everything into a single `.exe`.
-* `--windowed`: Prevents the black command prompt console from appearing behind the UI.
-* `--name`: Forces PyInstaller to name the output file `foxl_addin_manager.exe` instead of `main.exe`.
-
-Once the build finishes, you will find `foxl_addin_manager.exe` inside the newly created `dist/` folder. 
+Once the build finishes, your `.exe` files will be located in the `dist/` folder.
 
 ### Cleaning Up Build Files
-
-PyInstaller generates several temporary folders and files during the build process. To clean up your workspace after grabbing your `.exe` from the `dist/` folder, you can run the following commands in your Windows terminal:
+PyInstaller generates temporary folders during the build process. To clean up your workspace after grabbing your `.exe`:
 
 **Command Prompt (cmd):**
 ```cmd
@@ -74,7 +82,16 @@ del /q *.spec
 Remove-Item -Recurse -Force build, dist, *.spec -ErrorAction SilentlyContinue
 ```
 
-## Usage Notes
-* **Network Checks:** The app checks the network drives for versions asynchronously. If you are offline or not connected to the VPN, the app will launch instantly and simply display "Offline / Access Denied".
-* **Config Viewer:** You can inspect the parsed JSON parameters for any environment or version (both local and network) by clicking the "View Configs..." button.
-* **Registry Editor:** Using the "Open Regedit Here" button temporarily updates the Registry Editor's `LastKey` memory. You may need to run the app as Administrator if you encounter permission errors using this specific button.
+## Command Line Usage (Quick Environment Toggling)
+
+If you prefer to change your environment from the terminal without opening the UI, you can use these one-liners (replace `Dev` with `Prod`, `UAT`, or `local`):
+
+**PowerShell:**
+```powershell
+$f = "$env:APPDATA\NinetyOne - FrontOfficeExcelAddIn\front-office-excel-addin-env"; (Get-Content $f) -replace '^ENV=.*', 'ENV=Dev' | Set-Content $f
+```
+
+**Command Prompt (cmd):**
+```cmd
+set "f=%APPDATA%\NinetyOne - FrontOfficeExcelAddIn\front-office-excel-addin-env" & type "%f%" | findstr /v "^ENV=" > "%f%.tmp" & echo ENV=Dev>> "%f%.tmp" & move /y "%f%.tmp" "%f%"
+```

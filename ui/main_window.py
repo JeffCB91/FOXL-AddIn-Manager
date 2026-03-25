@@ -64,15 +64,15 @@ class MainWindow:
         loader_btn_f.pack(fill="x", pady=2)
         ttk.Button(loader_btn_f, text="Open Loader Path", command=lambda: self.do_explore(LOADER_PATH)).pack(
             side="left", fill="x", expand=True, padx=(0, 2))
-        ttk.Button(loader_btn_f, text="Open Add-in Path", command=lambda: self.do_explore(ADD_IN_PATH)).pack(
+        ttk.Button(loader_btn_f, text="Open v8 Add-in Path", command=lambda: self.do_explore(ADD_IN_PATH)).pack(
             side="right", fill="x", expand=True, padx=(0, 2))
         # Create an invisible container frame to hold the side-by-side buttons
         local_btn_f = ttk.Frame(path_f)
         local_btn_f.pack(fill="x", pady=2)
         # Pack the first button to the left, and the second to the right
-        ttk.Button(local_btn_f, text=r"C:\ExcelAddIn", command=lambda: self.do_explore(BASE_LOCAL_PATH)).pack(
+        ttk.Button(local_btn_f, text=r"Open Test Path", command=lambda: self.do_explore(BASE_LOCAL_PATH)).pack(
             side="left", fill="x", expand=True, padx=(0, 2))
-        ttk.Button(local_btn_f, text=r"...\_91ExcelAddIn", command=lambda: self.do_explore(LOCAL_TEST_PATH)).pack(
+        ttk.Button(local_btn_f, text=r"Open v6 Add-in Path", command=lambda: self.do_explore(LOCAL_TEST_PATH)).pack(
             side="right", fill="x", expand=True, padx=(2, 0))
 
         # --- Registry Section ---
