@@ -1,5 +1,4 @@
 import winreg
-import os
 import subprocess
 from config import REG_PATH
 
@@ -30,9 +29,7 @@ def open_regedit_at_path():
         target_key = f"Computer\\HKEY_CURRENT_USER\\{REG_PATH}"
 
         # Update Regedit's LastKey memory
-        applet_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                                    r"Software\Microsoft\Windows\CurrentVersion\Applets\Regedit", 0,
-                                    winreg.KEY_SET_VALUE)
+        applet_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Applets\Regedit", 0, winreg.KEY_SET_VALUE)
         winreg.SetValueEx(applet_key, "LastKey", 0, winreg.REG_SZ, target_key)
         winreg.CloseKey(applet_key)
 

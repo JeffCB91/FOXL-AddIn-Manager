@@ -1,12 +1,12 @@
+import os
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
-import threading
-import os
 
 from config import ENV_FILE_PATH, LOADER_PATH, LOCAL_TEST_PATH, NETWORK_PATH_8, NETWORK_PATH_6
 from core.env_manager import read_env, update_env_param
-from core.scanner import scan_path_sync
 from core.registry_ops import scan_registry_for_ninetyone, open_regedit_at_path
+from core.scanner import scan_path_sync
 from core.system_ops import open_in_explorer, launch_excel
 from ui.config_viewer import ConfigViewer
 
@@ -34,16 +34,11 @@ class MainWindow:
         env_f = ttk.LabelFrame(self.root, text="Environment Settings", padding=(10, 10))
         env_f.pack(fill="x", padx=10, pady=5)
         ttk.Label(env_f, text="Current ENV:").grid(row=0, column=0, sticky="w", pady=5)
-        self.env_dd = ttk.Combobox(env_f, textvariable=self.env_var, values=["Prod", "UAT", "Dev", "local"],
-                                   state="readonly", width=18)
+        self.env_dd = ttk.Combobox(env_f, textvariable=self.env_var, values=["Prod", "UAT", "Dev", "local"], state="readonly", width=18)
         self.env_dd.grid(row=0, column=1, padx=10, pady=5)
-        ttk.Button(env_f, text="Update ENV", command=lambda: self.save_env_param("ENV", self.env_var.get())).grid(row=0,
-                                                                                                                  column=2,
-                                                                                                                  padx=5)
+        ttk.Button(env_f, text="Update ENV", command=lambda: self.save_env_param("ENV", self.env_var.get())).grid(row=0, column=2, padx=5)
         ttk.Label(env_f, text="Current VERSION:").grid(row=1, column=0, sticky="w", pady=5)
-        ttk.Label(env_f, textvariable=self.current_version_var, font=("TkDefaultFont", 9, "bold")).grid(row=1, column=1,
-                                                                                                        sticky="w",
-                                                                                                        padx=10, pady=5)
+        ttk.Label(env_f, textvariable=self.current_version_var, font=("TkDefaultFont", 9, "bold")).grid(row=1, column=1, sticky="w", padx=10, pady=5)
         ttk.Button(env_f, text="View Configs...", command=self.open_viewer).grid(row=0, column=3, padx=5)
 
         # --- Tabs Section ---
@@ -61,18 +56,15 @@ class MainWindow:
         ttk.Button(path_f, text="Open Env File Folder",
                    command=lambda: self.do_explore(os.path.dirname(ENV_FILE_PATH))).pack(fill="x", pady=2)
         ttk.Button(path_f, text="Open Loader Path", command=lambda: self.do_explore(LOADER_PATH)).pack(fill="x", pady=2)
-        ttk.Button(path_f, text="Open Local Test Path", command=lambda: self.do_explore(LOCAL_TEST_PATH)).pack(fill="x",
-                                                                                                               pady=2)
+        ttk.Button(path_f, text="Open Local Test Path", command=lambda: self.do_explore(LOCAL_TEST_PATH)).pack(fill="x", pady=2)
 
         # --- Registry Section ---
         reg_f = ttk.LabelFrame(self.root, text="Registry Check", padding=(10, 10))
         reg_f.pack(fill="both", expand=True, padx=10, pady=5)
         btn_f = ttk.Frame(reg_f)
         btn_f.pack(fill="x", pady=(0, 5))
-        ttk.Button(btn_f, text="Check 'NinetyOne'", command=self.do_reg_check).pack(side="left", fill="x", expand=True,
-                                                                                    padx=(0, 2))
-        ttk.Button(btn_f, text="Open Regedit Here", command=self.do_reg_open).pack(side="right", fill="x", expand=True,
-                                                                                   padx=(2, 0))
+        ttk.Button(btn_f, text="Check 'NinetyOne'", command=self.do_reg_check).pack(side="left", fill="x", expand=True, padx=(0, 2))
+        ttk.Button(btn_f, text="Open Regedit Here", command=self.do_reg_open).pack(side="right", fill="x", expand=True, padx=(2, 0))
 
         # Changed height from 5 to 2
         self.reg_out = scrolledtext.ScrolledText(reg_f, height=2, width=50, wrap=tk.WORD)
@@ -90,8 +82,7 @@ class MainWindow:
         v = tk.StringVar(value="Checking...")
         dd = ttk.Combobox(t, textvariable=v, state="readonly", width=22)
         dd.grid(row=0, column=1, padx=10, pady=5)
-        ttk.Button(t, text="Save to Env", command=lambda: self.save_env_param("VERSION", v.get())).grid(row=0, column=2,
-                                                                                                        padx=5)
+        ttk.Button(t, text="Save to Env", command=lambda: self.save_env_param("VERSION", v.get())).grid(row=0, column=2, padx=5)
         ttk.Button(t, text="Open Folder", command=lambda: self.do_explore(path)).grid(row=0, column=3, padx=5)
         return v, dd
 
