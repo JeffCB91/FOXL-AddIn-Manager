@@ -9,17 +9,17 @@ from core.scanner import scan_path_sync
 from core.registry_ops import scan_registry_for_ninetyone, open_regedit_at_path
 from core.system_ops import open_in_explorer, launch_excel, close_excel, kill_excel
 from ui.config_viewer import ConfigViewer
+from ui.user_window import UserWindow
 
 
 class MainWindow:
     def __init__(self, root):
         self.root = root
-        self.root.title("FOXL Add-In Manager")
-        self.root.geometry("520x640")
+        self.root.title("   FOXL Helper")
+        self.root.geometry("520x590")
         self.root.resizable(False, False)
 
-        ttk.Style().theme_use('clam')
-
+        # ttk.Style().theme_use('clam')
         self.env_var = tk.StringVar()
         self.current_version_var = tk.StringVar(value="Not set")
 
@@ -31,20 +31,23 @@ class MainWindow:
 
     def create_widgets(self):
         # --- Environment Section ---
-        env_f = ttk.LabelFrame(self.root, text="Environment Settings", padding=(10, 10))
-        env_f.pack(fill="x", padx=10, pady=5)
-        ttk.Label(env_f, text="Current ENV:").grid(row=0, column=0, sticky="w", pady=5)
-        self.env_dd = ttk.Combobox(env_f, textvariable=self.env_var, values=["Prod", "UAT", "Dev", "local"],
+        env_frame = ttk.LabelFrame(self.root, text="Environment Settings", padding=(10, 10))
+        env_frame.pack(fill="x", padx=10, pady=5)
+        env_frame.columnconfigure(3, weight=1)
+
+        ttk.Label(env_frame, text="Current ENV:").grid(row=0, column=0, sticky="w", pady=5)
+        self.env_dd = ttk.Combobox(env_frame, textvariable=self.env_var, values=["Prod", "UAT", "Dev", "local"],
                                    state="readonly", width=18)
         self.env_dd.grid(row=0, column=1, padx=10, pady=5)
-        ttk.Button(env_f, text="Update ENV", command=lambda: self.save_env_param("ENV", self.env_var.get())).grid(row=0,
-                                                                                                                  column=2,
-                                                                                                                  padx=5)
-        ttk.Label(env_f, text="Current VERSION:").grid(row=1, column=0, sticky="w", pady=5)
-        ttk.Label(env_f, textvariable=self.current_version_var, font=("TkDefaultFont", 9, "bold")).grid(row=1, column=1,
-                                                                                                        sticky="w",
-                                                                                                        padx=10, pady=5)
-        ttk.Button(env_f, text="View Configs...", command=self.open_viewer).grid(row=0, column=3, padx=5)
+        ttk.Button(env_frame, text="Update ENV",
+                   command=lambda: self.save_env_param("ENV", self.env_var.get())).grid(row=0, column=2, padx=5)
+        ttk.Label(env_frame, text="Current VERSION:").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(env_frame, textvariable=self.current_version_var,
+                  font=("TkDefaultFont", 9, "bold")).grid(row=1, column=1, sticky="w", padx=10, pady=5)
+        ttk.Button(env_frame, text="View Configs...",
+                   command=self.open_viewer).grid(row=0, column=3, padx=5, sticky="ew")
+        ttk.Button(env_frame, text="User View",
+                   command=self.open_user_view).grid(row=1, column=3, padx=5, pady=2, sticky="ew")
 
         # --- Tabs Section ---
         nb_f = ttk.Frame(self.root)
@@ -58,30 +61,33 @@ class MainWindow:
         # --- Paths Section ---
         path_f = ttk.LabelFrame(self.root, text="Local Directories", padding=(10, 10))
         path_f.pack(fill="x", padx=10, pady=5)
-        ttk.Button(path_f, text="Open Env File Folder", command=lambda: self.do_explore(os.path.dirname(ENV_FILE_PATH))).pack(fill="x", pady=2)
+        ttk.Button(path_f, text="Open Env File Folder",
+                   command=lambda: self.do_explore(os.path.dirname(ENV_FILE_PATH))).pack(fill="x", pady=2)
         # Create an invisible container frame to hold the side-by-side buttons
         loader_btn_f = ttk.Frame(path_f)
         loader_btn_f.pack(fill="x", pady=2)
-        ttk.Button(loader_btn_f, text="Open Loader Path", command=lambda: self.do_explore(LOADER_PATH)).pack(
-            side="left", fill="x", expand=True, padx=(0, 2))
-        ttk.Button(loader_btn_f, text="Open v8 Add-in Path", command=lambda: self.do_explore(ADD_IN_PATH)).pack(
-            side="right", fill="x", expand=True, padx=(0, 2))
+        ttk.Button(loader_btn_f, text="Open Loader Path",
+                   command=lambda: self.do_explore(LOADER_PATH)).pack(side="left", fill="x", expand=True, padx=(0, 2))
+        ttk.Button(loader_btn_f, text="Open v8 Add-in Path",
+                   command=lambda: self.do_explore(ADD_IN_PATH)).pack(side="right", fill="x", expand=True, padx=(0, 2))
         # Create an invisible container frame to hold the side-by-side buttons
         local_btn_f = ttk.Frame(path_f)
         local_btn_f.pack(fill="x", pady=2)
         # Pack the first button to the left, and the second to the right
-        ttk.Button(local_btn_f, text=r"Open Test Path", command=lambda: self.do_explore(BASE_LOCAL_PATH)).pack(
-            side="left", fill="x", expand=True, padx=(0, 2))
-        ttk.Button(local_btn_f, text=r"Open v6 Add-in Path", command=lambda: self.do_explore(LOCAL_TEST_PATH)).pack(
-            side="right", fill="x", expand=True, padx=(2, 0))
+        ttk.Button(local_btn_f, text=r"Open Test Path",
+                   command=lambda: self.do_explore(BASE_LOCAL_PATH)).pack(side="left", fill="x", expand=True, padx=(0, 2))
+        ttk.Button(local_btn_f, text=r"Open v6 Add-in Path",
+                   command=lambda: self.do_explore(LOCAL_TEST_PATH)).pack(side="right", fill="x", expand=True, padx=(2, 0))
 
         # --- Registry Section ---
         reg_f = ttk.LabelFrame(self.root, text="Registry Check", padding=(10, 10))
         reg_f.pack(fill="x", padx=10, pady=5)
         btn_f = ttk.Frame(reg_f)
         btn_f.pack(fill="x", pady=(0, 5))
-        ttk.Button(btn_f, text="Check 'NinetyOne'", command=self.do_reg_check).pack(side="left", fill="x", expand=True, padx=(0, 2))
-        ttk.Button(btn_f, text="Open Regedit Here", command=self.do_reg_open).pack(side="right", fill="x", expand=True, padx=(2, 0))
+        ttk.Button(btn_f, text="Check 'NinetyOne'",
+                   command=self.do_reg_check).pack(side="left", fill="x", expand=True, padx=(0, 2))
+        ttk.Button(btn_f, text="Open Regedit Here",
+                   command=self.do_reg_open).pack(side="right", fill="x", expand=True, padx=(2, 0))
         self.reg_out = scrolledtext.ScrolledText(reg_f, height=6, width=50, wrap=tk.WORD)
         self.reg_out.pack(fill="x")
 
@@ -106,9 +112,10 @@ class MainWindow:
         v = tk.StringVar(value="Checking...")
         dd = ttk.Combobox(t, textvariable=v, state="readonly", width=22)
         dd.grid(row=0, column=1, padx=10, pady=5)
-        ttk.Button(t, text="Save to Env", command=lambda: self.save_env_param("VERSION", v.get())).grid(row=0, column=2,
-                                                                                                        padx=5)
-        ttk.Button(t, text="Open Folder", command=lambda: self.do_explore(path)).grid(row=0, column=3, padx=5)
+        ttk.Button(t, text="Save to Env",
+                   command=lambda: self.save_env_param("VERSION", v.get())).grid(row=0, column=2, padx=5)
+        ttk.Button(t, text="Open Network Folder",
+                   command=lambda: self.do_explore(path)).grid(row=0, column=3, padx=5, sticky="ew")
         return v, dd
 
     # --- Actions ---
@@ -144,6 +151,11 @@ class MainWindow:
 
     def open_viewer(self):
         ConfigViewer(self.root, self.env_var.get(), self.versions["v8"], self.versions["v6"], self.versions["local"])
+
+    def open_user_view(self):
+        child_window = tk.Toplevel(self.root)
+        user_view = UserWindow(child_window)
+        child_window.grab_set()
 
     def do_explore(self, path):
         if not open_in_explorer(path): messagebox.showwarning("Not Found", path)
