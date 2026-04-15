@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import json
 import os
+import threading
 
 from config import LOG_DIR_PATH
 from core.log_ops import get_log_files, generate_unified_timeline, export_logs_to_zip
@@ -25,6 +26,7 @@ class LogViewer(tk.Toplevel):
         ttk.Button(toolbar, text="Copy Selected", command=self.copy_selection).pack(side="left", padx=2)
         ttk.Button(toolbar, text="Copy All", command=self.copy_all).pack(side="left", padx=2)
         ttk.Button(toolbar, text="Prettify Selected JSON", command=self.prettify_json).pack(side="left", padx=(10, 2))
+        ttk.Button(toolbar, text="Refresh", command=self.refresh).pack(side="left", padx=(10, 2))
         ttk.Button(toolbar, text="Compress & Save Logs for Support", command=self.export_zip).pack(side="right", padx=2)
 
         # --- Tabs ---
@@ -54,23 +56,48 @@ class LogViewer(tk.Toplevel):
         self.txt_file.pack(fill="both", expand=True, padx=5, pady=5)
 
     def load_data(self):
+        self.txt_unified.delete(1.0, tk.END)
+
         if not self.log_files:
             self.txt_unified.insert(tk.END, f"No logs found in:\n{LOG_DIR_PATH}")
             return
 
-        # Load Unified
         self.txt_unified.insert(tk.END, "Compiling unified timeline...\n")
-        self.update()  # Force UI refresh
-        unified_data = generate_unified_timeline(self.log_files)
-        self.txt_unified.delete(1.0, tk.END)
-        self.txt_unified.insert(tk.END, unified_data)
 
-        # Load File Dropdown
+        # Populate file dropdown immediately (fast)
         filenames = [os.path.basename(f) for f in self.log_files]
         self.file_dd['values'] = filenames
         if filenames:
             self.file_dd.set(filenames[0])
             self.on_file_select()
+
+        # Parse and merge logs in background to avoid freezing the UI
+        threading.Thread(target=self._load_unified_bg, daemon=True).start()
+
+    def _load_unified_bg(self):
+        entries, errors = generate_unified_timeline(self.log_files)
+
+        if entries:
+            data = "".join(e[1] for e in entries)
+        else:
+            data = "No logs found or unable to parse timestamps."
+
+        if errors:
+            error_lines = "\n".join(f"  {name}: {msg}" for name, msg in errors)
+            data += f"\n\n--- Files with parse errors ---\n{error_lines}\n"
+
+        def _update():
+            self.txt_unified.delete(1.0, tk.END)
+            self.txt_unified.insert(tk.END, data)
+
+        self.after(0, _update)
+
+    def refresh(self):
+        self.log_files = get_log_files(LOG_DIR_PATH)
+        self.txt_file.delete(1.0, tk.END)
+        self.file_dd['values'] = []
+        self.file_var.set("")
+        self.load_data()
 
     def on_file_select(self, event=None):
         selected_name = self.file_var.get()
@@ -78,8 +105,11 @@ class LogViewer(tk.Toplevel):
 
         self.txt_file.delete(1.0, tk.END)
         if target_path and os.path.exists(target_path):
-            with open(target_path, 'r', encoding='utf-8', errors='replace') as f:
-                self.txt_file.insert(tk.END, f.read())
+            try:
+                with open(target_path, 'r', encoding='utf-8', errors='replace') as f:
+                    self.txt_file.insert(tk.END, f.read())
+            except OSError as e:
+                self.txt_file.insert(tk.END, f"Could not read file:\n{e}")
 
     # --- Toolbar Actions ---
     def get_active_textbox(self):
@@ -92,7 +122,6 @@ class LogViewer(tk.Toplevel):
             selected = txt.get(tk.SEL_FIRST, tk.SEL_LAST)
             self.clipboard_clear()
             self.clipboard_append(selected)
-            messagebox.showinfo("Copied", "Selected text copied to clipboard.")
         except tk.TclError:
             messagebox.showwarning("Warning", "No text selected.")
 
@@ -100,21 +129,17 @@ class LogViewer(tk.Toplevel):
         txt = self.get_active_textbox()
         self.clipboard_clear()
         self.clipboard_append(txt.get(1.0, tk.END))
-        messagebox.showinfo("Copied", "All text copied to clipboard.")
 
     def prettify_json(self):
         txt = self.get_active_textbox()
         try:
-            # Grab selected text
             start_idx = txt.index(tk.SEL_FIRST)
             end_idx = txt.index(tk.SEL_LAST)
             selected_text = txt.get(start_idx, end_idx)
 
-            # Attempt to parse and format
             parsed = json.loads(selected_text)
             pretty_json = json.dumps(parsed, indent=4)
 
-            # Replace selected text with pretty version
             txt.delete(start_idx, end_idx)
             txt.insert(start_idx, pretty_json)
 

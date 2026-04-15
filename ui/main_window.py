@@ -71,7 +71,7 @@ class MainWindow:
 
         # Row 0: Logs Buttons (Note: Your original had two identical logs buttons)
         ttk.Button(path_f, text="Open Logs Folder",
-                   command=lambda: self.do_explore(os.path.dirname(LOG_DIR_PATH))).grid(row=0, column=0, sticky="ew",
+                   command=lambda: self.do_explore(LOG_DIR_PATH)).grid(row=0, column=0, sticky="ew",
                                                                                      padx=(0, 2), pady=2)
         ttk.Button(path_f, text="Support Logs", command=self.open_log_viewer).grid(row=0, column=1, sticky="ew",
                                                                                      padx=(2, 0), pady=2)
