@@ -3,13 +3,15 @@ from tkinter import ttk, messagebox, scrolledtext
 import threading
 import os
 
-from config import ENV_FILE_PATH, LOADER_PATH, ADD_IN_PATH, LOCAL_TEST_PATH, BASE_LOCAL_PATH, NETWORK_PATH_8, NETWORK_PATH_6
+from config import ENV_FILE_PATH, LOADER_PATH, ADD_IN_PATH, LOCAL_TEST_PATH, BASE_LOCAL_PATH, NETWORK_PATH_8, \
+    NETWORK_PATH_6, TEMPLATES_PATH, LOG_DIR_PATH
 from core.env_manager import read_env, update_env_param
 from core.scanner import scan_path_sync
 from core.registry_ops import scan_registry_for_ninetyone, open_regedit_at_path
 from core.system_ops import open_in_explorer, launch_excel, close_excel, kill_excel
 from ui.config_viewer import ConfigViewer
 from ui.user_window import UserWindow
+from ui.log_viewer import LogViewer
 
 
 class MainWindow:
@@ -33,6 +35,7 @@ class MainWindow:
         # --- Environment Section ---
         env_frame = ttk.LabelFrame(self.root, text="Environment Settings", padding=(10, 10))
         env_frame.pack(fill="x", padx=10, pady=5)
+        env_frame.columnconfigure(2, weight=1)
         env_frame.columnconfigure(3, weight=1)
 
         ttk.Label(env_frame, text="Current ENV:").grid(row=0, column=0, sticky="w", pady=5)
@@ -40,7 +43,9 @@ class MainWindow:
                                    state="readonly", width=18)
         self.env_dd.grid(row=0, column=1, padx=10, pady=5)
         ttk.Button(env_frame, text="Update ENV",
-                   command=lambda: self.save_env_param("ENV", self.env_var.get())).grid(row=0, column=2, padx=5)
+                   command=lambda: self.save_env_param("ENV", self.env_var.get())).grid(row=0, column=2, padx=5, sticky="ew")
+        ttk.Button(env_frame, text="Open Env Folder",
+                   command=lambda: self.do_explore(os.path.dirname(ENV_FILE_PATH))).grid(row=1, column=2, padx=5, sticky="ew")
         ttk.Label(env_frame, text="Current VERSION:").grid(row=1, column=0, sticky="w", pady=5)
         ttk.Label(env_frame, textvariable=self.current_version_var,
                   font=("TkDefaultFont", 9, "bold")).grid(row=1, column=1, sticky="w", padx=10, pady=5)
@@ -61,23 +66,29 @@ class MainWindow:
         # --- Paths Section ---
         path_f = ttk.LabelFrame(self.root, text="Local Directories", padding=(10, 10))
         path_f.pack(fill="x", padx=10, pady=5)
-        ttk.Button(path_f, text="Open Env File Folder",
-                   command=lambda: self.do_explore(os.path.dirname(ENV_FILE_PATH))).pack(fill="x", pady=2)
-        # Create an invisible container frame to hold the side-by-side buttons
-        loader_btn_f = ttk.Frame(path_f)
-        loader_btn_f.pack(fill="x", pady=2)
-        ttk.Button(loader_btn_f, text="Open Loader Path",
-                   command=lambda: self.do_explore(LOADER_PATH)).pack(side="left", fill="x", expand=True, padx=(0, 2))
-        ttk.Button(loader_btn_f, text="Open v8 Add-in Path",
-                   command=lambda: self.do_explore(ADD_IN_PATH)).pack(side="right", fill="x", expand=True, padx=(0, 2))
-        # Create an invisible container frame to hold the side-by-side buttons
-        local_btn_f = ttk.Frame(path_f)
-        local_btn_f.pack(fill="x", pady=2)
-        # Pack the first button to the left, and the second to the right
-        ttk.Button(local_btn_f, text=r"Open Test Path",
-                   command=lambda: self.do_explore(BASE_LOCAL_PATH)).pack(side="left", fill="x", expand=True, padx=(0, 2))
-        ttk.Button(local_btn_f, text=r"Open v6 Add-in Path",
-                   command=lambda: self.do_explore(LOCAL_TEST_PATH)).pack(side="right", fill="x", expand=True, padx=(2, 0))
+        path_f.columnconfigure(0, weight=1)
+        path_f.columnconfigure(1, weight=1)
+
+        # Row 0: Logs Buttons (Note: Your original had two identical logs buttons)
+        ttk.Button(path_f, text="Open Logs Folder",
+                   command=lambda: self.do_explore(os.path.dirname(LOG_DIR_PATH))).grid(row=0, column=0, sticky="ew",
+                                                                                     padx=(0, 2), pady=2)
+        ttk.Button(path_f, text="Support Logs", command=self.open_log_viewer).grid(row=0, column=1, sticky="ew",
+                                                                                     padx=(2, 0), pady=2)
+
+        # Row 1: Loader and v8 Add-in
+        ttk.Button(path_f, text="Open Loader Path",
+                   command=lambda: self.do_explore(LOADER_PATH)).grid(row=1, column=0, sticky="ew", padx=(0, 2), pady=2)
+        ttk.Button(path_f, text="Open v8 Add-in Path",
+                   command=lambda: self.do_explore(ADD_IN_PATH)).grid(row=1, column=1, sticky="ew", padx=(2, 0), pady=2)
+
+        # Row 2: Test and v6 Add-in
+        ttk.Button(path_f, text="Open Test Path",
+                   command=lambda: self.do_explore(BASE_LOCAL_PATH)).grid(row=2, column=0, sticky="ew", padx=(0, 2),
+                                                                          pady=2)
+        ttk.Button(path_f, text="Open v6 Add-in Path",
+                   command=lambda: self.do_explore(LOCAL_TEST_PATH)).grid(row=2, column=1, sticky="ew", padx=(2, 0),
+                                                                          pady=2)
 
         # --- Registry Section ---
         reg_f = ttk.LabelFrame(self.root, text="Registry Check", padding=(10, 10))
@@ -98,12 +109,14 @@ class MainWindow:
         btn_container = ttk.Frame(excel_frame)
         btn_container.pack(fill="x")
 
-        ttk.Button(btn_container, text="Open Excel", command=self.do_launch_excel).pack(side="left", expand=True,
-                                                                                        fill="x", padx=(0, 2))
-        ttk.Button(btn_container, text="Close Safely", command=self.do_close_excel).pack(side="left", expand=True,
-                                                                                         fill="x", padx=2)
-        ttk.Button(btn_container, text="Force Kill", command=self.do_kill_excel).pack(side="right", expand=True,
-                                                                                      fill="x", padx=(2, 0))
+        ttk.Button(btn_container, text="Open Excel",
+                   command=self.do_launch_excel).pack(side="left", expand=True, fill="x", padx=(0, 2))
+        ttk.Button(btn_container, text="FOXL Templates",
+                   command=lambda: self.do_explore(TEMPLATES_PATH)).pack(side="left", expand=True, fill="x", padx=(0, 2))
+        ttk.Button(btn_container, text="Close Safely",
+                   command=self.do_close_excel).pack(side="left", expand=True, fill="x", padx=2)
+        ttk.Button(btn_container, text="Force Kill",
+                   command=self.do_kill_excel).pack(side="right", expand=True, fill="x", padx=(2, 0))
 
     def create_tab(self, name, path):
         t = ttk.Frame(self.nb, padding=(10, 10))
@@ -156,6 +169,9 @@ class MainWindow:
         child_window = tk.Toplevel(self.root)
         user_view = UserWindow(child_window)
         child_window.grab_set()
+
+    def open_log_viewer(self):
+        LogViewer(self.root).grab_set()
 
     def do_explore(self, path):
         if not open_in_explorer(path): messagebox.showwarning("Not Found", path)
