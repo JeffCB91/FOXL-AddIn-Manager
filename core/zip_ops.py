@@ -5,6 +5,21 @@ import shutil
 from config import BASE_LOCAL_PATH
 
 
+def find_xll_in_folder(folder_path):
+    """Searches a folder (and subdirectories) for a .xll file.
+
+    Returns:
+        tuple: (success, xll_path_or_error_msg)
+    """
+    if not os.path.isdir(folder_path):
+        return False, "The selected path is not a valid folder."
+    for root, dirs, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith('.xll'):
+                return True, os.path.join(root, file)
+    return False, "No .xll file found in the selected folder."
+
+
 def extract_and_install_zip(zip_path, target_subfolder_name):
     """Extracts zip, finds .xll and .json, and moves them to the local test path."""
 
