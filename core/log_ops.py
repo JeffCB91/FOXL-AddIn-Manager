@@ -2,6 +2,38 @@ import os
 import zipfile
 import re
 
+# Explicit renames for service identifiers that need specific display names
+_RENAME_MAP = {
+    'LoaderLog': 'Loader',
+    'RiskAnalyticDataAccess': 'Risk Analytics',
+}
+
+# Suffixes stripped to shorten service names when no explicit rename exists
+_STRIP_SUFFIXES = ('ExcelAddInService', 'ExcelAddIn', 'Service')
+
+
+def extract_service(filename):
+    """Returns the first dot-delimited segment from a log filename.
+    e.g. 'AddIn' from 'AddIn.EXCEL.12345.log'
+    """
+    return filename.split('.')[0]
+
+
+def format_service_name(raw):
+    """Returns a short display name for a raw service identifier."""
+    if raw in _RENAME_MAP:
+        return _RENAME_MAP[raw]
+    for suffix in _STRIP_SUFFIXES:
+        if raw.endswith(suffix):
+            return raw[:-len(suffix)]
+    return raw
+
+
+def get_services(log_files):
+    """Returns a sorted list of (raw, display) service name tuples derived from the given log files."""
+    raw_names = sorted({extract_service(os.path.basename(f)) for f in log_files})
+    return [(raw, format_service_name(raw)) for raw in raw_names]
+
 
 def get_log_files(log_dir):
     """Returns a list of all .log or .txt files in the log directory, sorted by modification time."""
@@ -11,8 +43,12 @@ def get_log_files(log_dir):
     return sorted(files, key=os.path.getmtime)
 
 
-def generate_unified_timeline(log_files):
+def generate_unified_timeline(log_files, reverse=False):
     """Reads all logs, parses their timestamps, and sorts them chronologically.
+
+    Args:
+        log_files: List of log file paths to process.
+        reverse:   If True, return entries newest-first.
 
     Returns:
         tuple: (entries, errors) where entries is a list of (timestamp_str, text_str) tuples
@@ -47,7 +83,7 @@ def generate_unified_timeline(log_files):
         except Exception as e:
             errors.append((filename, str(e)))
 
-    all_entries.sort(key=lambda x: x[0])
+    all_entries.sort(key=lambda x: x[0], reverse=reverse)
     return all_entries, errors
 
 
