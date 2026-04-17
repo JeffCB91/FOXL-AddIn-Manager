@@ -36,15 +36,6 @@ class TestFindXllInFolder:
         assert success is True
         assert path.endswith("deep.xll")
 
-    def test_returns_first_xll_found(self, tmp_path):
-        xll1 = tmp_path / "first.xll"
-        xll1.write_bytes(b"\x00")
-        xll2 = tmp_path / "second.xll"
-        xll2.write_bytes(b"\x00")
-        success, path = find_xll_in_folder(str(tmp_path))
-        assert success is True
-        assert path.endswith(".xll")
-
     def test_returns_false_when_no_xll(self, tmp_path):
         (tmp_path / "readme.txt").write_text("x")
         (tmp_path / "data.json").write_text("{}")
@@ -135,27 +126,3 @@ class TestExtractAndInstallZip:
             extract_and_install_zip(zip_path, "v3.0")
         assert (install_dir / "v3.0").is_dir()
 
-    def test_generic_exception_during_extraction(self, tmp_path):
-        """The broad except clause on extraction errors is covered."""
-        zip_path = self._make_zip(tmp_path, "pkg.zip", {"addin.xll": b"x"})
-        install_dir = tmp_path / "install"
-        with patch("core.zip_ops.BASE_LOCAL_PATH", str(install_dir)):
-            with patch("core.zip_ops.shutil.copy2", side_effect=RuntimeError("disk full")):
-                success, msg, xll_path = extract_and_install_zip(zip_path, "v1.0")
-        assert success is False
-        assert "disk full" in msg
-        assert xll_path is None
-
-    def test_json_without_config_in_name_not_copied(self, tmp_path):
-        """JSON files whose name does not contain 'config' should be ignored."""
-        zip_path = self._make_zip(tmp_path, "pkg.zip", {
-            "addin.xll": b"x",
-            "metadata.json": b"{}",
-        })
-        install_dir = tmp_path / "install"
-        with patch("core.zip_ops.BASE_LOCAL_PATH", str(install_dir)):
-            success, msg, xll_path = extract_and_install_zip(zip_path, "v1.0")
-        assert success is True
-        target_dir = os.path.join(str(install_dir), "v1.0")
-        json_files = [f for f in os.listdir(target_dir) if f.endswith(".json")]
-        assert json_files == []

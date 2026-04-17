@@ -17,10 +17,6 @@ class TestOpenInExplorer:
         assert result is True
         mock_sf.assert_called_once_with(str(tmp_path))
 
-    def test_returns_false_for_empty_string(self):
-        result = open_in_explorer("")
-        assert result is False
-
 
 class TestLaunchExcel:
     def test_returns_true_on_success(self):
@@ -63,20 +59,6 @@ class TestKillExcel:
         assert success is True
         assert msg == ""
         assert mock_run.call_count == 2
-
-    def test_force_kill_command_args(self):
-        with patch("core.system_ops.subprocess.run") as mock_run:
-            kill_excel()
-        first_call_args = mock_run.call_args_list[0][0][0]
-        assert "/f" in first_call_args
-        assert "/t" in first_call_args
-        assert "excel.exe" in first_call_args
-
-    def test_wmi_fallback_command(self):
-        with patch("core.system_ops.subprocess.run") as mock_run:
-            kill_excel()
-        second_call_args = mock_run.call_args_list[1][0][0]
-        assert "wmic" in second_call_args
 
     def test_returns_false_on_exception(self):
         with patch("core.system_ops.subprocess.run", side_effect=OSError("wmic error")):

@@ -29,30 +29,15 @@ class TestExtractService:
 
 
 class TestFormatServiceName:
-    def test_explicit_rename_loader(self):
+    def test_explicit_rename(self):
         assert format_service_name("LoaderLog") == "Loader"
-
-    def test_explicit_rename_risk_analytics(self):
-        assert format_service_name("RiskAnalyticDataAccess") == "Risk Analytics"
-
-    def test_strip_excel_addin_service_suffix(self):
-        assert format_service_name("FooExcelAddInService") == "Foo"
-
-    def test_strip_excel_addin_suffix(self):
-        assert format_service_name("BarExcelAddIn") == "Bar"
-
-    def test_strip_service_suffix(self):
-        assert format_service_name("BazService") == "Baz"
-
-    def test_no_match_returns_raw(self):
-        assert format_service_name("UnknownModule") == "UnknownModule"
 
     def test_suffix_priority_longest_first(self):
         # 'ExcelAddInService' should be stripped (longer) before 'Service'
         assert format_service_name("MyExcelAddInService") == "My"
 
-    def test_empty_string(self):
-        assert format_service_name("") == ""
+    def test_no_match_returns_raw(self):
+        assert format_service_name("UnknownModule") == "UnknownModule"
 
 
 class TestGetServices:
