@@ -145,6 +145,8 @@ class TestExtractAndInstallZip:
         assert success is False
         assert "disk full" in msg
         assert xll_path is None
+
+    def test_json_without_config_in_name_not_copied(self, tmp_path):
         """JSON files whose name does not contain 'config' should be ignored."""
         zip_path = self._make_zip(tmp_path, "pkg.zip", {
             "addin.xll": b"x",
