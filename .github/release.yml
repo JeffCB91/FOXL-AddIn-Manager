@@ -1,0 +1,29 @@
+name: Release Assets
+on:
+  release:
+    types: [published]
+
+jobs:
+  attach-assets:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Build Admin executable
+        run: |
+          pyinstaller --onefile --windowed --name "foxl_addin_admin" main.py
+      - name: Build User executable
+        run: |
+          pyinstaller --onefile --windowed --name "foxl_addin_user" main_user.py
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/foxl_addin_admin.exe
+            dist/foxl_addin_user.exe
