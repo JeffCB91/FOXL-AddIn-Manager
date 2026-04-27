@@ -12,13 +12,14 @@ from core.system_ops import open_in_explorer, launch_excel, close_excel, kill_ex
 from ui.config_viewer import ConfigViewer
 from ui.user_window import UserWindow
 from ui.log_viewer import LogViewer
+from ui.deploy_window import DeployWindow
 
 
 class MainWindow:
     def __init__(self, root):
         self.root = root
         self.root.title("   FOXL Helper")
-        self.root.geometry("520x590")
+        self.root.geometry("520x620")
         self.root.resizable(False, False)
 
         # ttk.Style().theme_use('clam')
@@ -53,6 +54,8 @@ class MainWindow:
                    command=self.open_viewer).grid(row=0, column=3, padx=5, sticky="ew")
         ttk.Button(env_frame, text="User View",
                    command=self.open_user_view).grid(row=1, column=3, padx=5, pady=2, sticky="ew")
+        ttk.Button(env_frame, text="Deploy Build...",
+                   command=self.open_deploy_window).grid(row=2, column=2, columnspan=2, padx=5, pady=(4, 0), sticky="ew")
 
         # --- Tabs Section ---
         nb_f = ttk.Frame(self.root)
@@ -172,6 +175,9 @@ class MainWindow:
 
     def open_log_viewer(self):
         LogViewer(self.root).grab_set()
+
+    def open_deploy_window(self):
+        DeployWindow(self.root)
 
     def do_explore(self, path):
         if not open_in_explorer(path): messagebox.showwarning("Not Found", path)

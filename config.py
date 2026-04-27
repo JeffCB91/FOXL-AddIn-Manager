@@ -22,3 +22,12 @@ NETWORK_PATH_6 = r"\\iamldnfs1\GDrive\Depts\Investment IT\Investment Solutions\S
 TEMPLATES_PATH = r"\\uranus\FMC\Data\Internal Data\FOXL Templates"
 
 CONFIG_FILE_NAME = "NinetyOne.ExcelAddIn.config.json"
+
+# Azure DevOps — FOXL build pipeline
+ADO_ORG = "Ninety-One"
+ADO_PROJECT = "Ninety-One"
+ADO_PIPELINE_ID = 556
+ADO_ARTIFACT_NAME = "Binaries"
+ADO_ARTIFACT_FILE = "NetworkShareFiles.zip"
+
+PAT_FILE_PATH = os.path.expandvars(r"%APPDATA%\NinetyOne - FrontOfficeExcelAddIn\.env")

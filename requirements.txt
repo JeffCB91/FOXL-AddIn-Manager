@@ -1,2 +1,3 @@
 # Required for compiling the script into an executable
 pyinstaller
+requests
