@@ -21,12 +21,15 @@ Packaged to `.exe` via PyInstaller — no pip install, just `pyinstaller`.
 | `scanner.py` | Scan a directory and return subdirectories (version folders) in reverse-sorted order. 11 lines. |
 | `system_ops.py` | Thin OS wrappers: open Explorer, launch/close/kill Excel via subprocess. |
 | `zip_ops.py` | Extract a zip to `C:\ExcelAddIn\<version>\`, find the `.xll`, copy `NinetyOne.ExcelAddIn.config.json` if present. |
+| `ado_client.py` | Fetch builds and download artifacts from Azure DevOps REST API using a PAT. `fetch_builds` lists recent pipeline runs; `download_artifact_zip` streams `NetworkShareFiles.zip` to a temp file. Uses `verify=False` (corporate proxy). |
+| `deploy_ops.py` | Network share deployment logic. `get_next_version` / `get_existing_versions` scan `vX.Y.Z` folders; `deploy_zip_to_network` extracts a zip into the next version slot; `rollback_to_network` copies an existing version folder as the new release. |
 
 ## UI modules (`ui/`)
 - `main_window.py` — Admin dashboard
 - `user_window.py` — User interface
 - `config_viewer.py` — Config/path viewer panel
 - `log_viewer.py` — Unified log timeline viewer
+- `deploy_window.py` — ADO build deploy dialog: load builds, deploy/rollback to network share, PAT save/load, Excel open/close/kill buttons
 
 ## Configuration constants (`config.py`)
 Key constants future tasks will likely reference:
@@ -36,6 +39,8 @@ Key constants future tasks will likely reference:
 - `LOG_DIR_PATH` = `C:\ProgramData\NinetyOne.ExcelAddIn\Logs`
 - `NETWORK_PATH_8` / `NETWORK_PATH_6` — UNC paths to versioned add-in releases
 - `CONFIG_FILE_NAME` = `NinetyOne.ExcelAddIn.config.json`
+- `ADO_ORG` / `ADO_PROJECT` / `ADO_PIPELINE_ID` / `ADO_ARTIFACT_NAME` / `ADO_ARTIFACT_FILE` — Azure DevOps pipeline constants
+- `PAT_FILE_PATH` = `%APPDATA%\NinetyOne - FrontOfficeExcelAddIn\.env` — persisted PAT storage
 
 ## Tests (`tests/`)
 108 tests across 6 files, all added on `copilot/analyze-test-coverage`. No tests existed on `main` before that branch.
