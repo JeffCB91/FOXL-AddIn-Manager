@@ -1,14 +1,17 @@
-import base64
 import os
 import tempfile
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 import requests
+import urllib3
 
 from config import ADO_ORG, ADO_PROJECT, ADO_PIPELINE_ID, ADO_ARTIFACT_NAME, ADO_ARTIFACT_FILE
 
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 _BASE = f"https://dev.azure.com/{ADO_ORG}/{ADO_PROJECT}"
 _API = "7.1"
+_SSL = False  # Corporate proxy intercepts TLS; no local CA bundle available
 
 
 def _auth(pat):
@@ -24,7 +27,7 @@ def fetch_builds(pat, top=20):
         "api-version": _API,
     }
     try:
-        r = requests.get(url, auth=_auth(pat), params=params, timeout=15)
+        r = requests.get(url, auth=_auth(pat), params=params, timeout=15, verify=_SSL)
         r.raise_for_status()
         return True, r.json().get("value", [])
     except requests.HTTPError as e:
@@ -46,7 +49,7 @@ def download_artifact_zip(pat, build_id, progress_cb=None):
     url = f"{_BASE}/_apis/build/builds/{build_id}/artifacts"
     params = {"artifactName": ADO_ARTIFACT_NAME, "api-version": _API}
     try:
-        r = requests.get(url, auth=_auth(pat), params=params, timeout=15)
+        r = requests.get(url, auth=_auth(pat), params=params, timeout=15, verify=_SSL)
         r.raise_for_status()
         download_url = r.json()["resource"]["downloadUrl"]
     except (requests.RequestException, KeyError) as e:
@@ -56,7 +59,7 @@ def download_artifact_zip(pat, build_id, progress_cb=None):
     dest = os.path.join(tempfile.gettempdir(), f"foxl_deploy_{build_id}.zip")
 
     try:
-        with requests.get(file_url, auth=_auth(pat), stream=True, timeout=120) as r:
+        with requests.get(file_url, auth=_auth(pat), stream=True, timeout=120, verify=_SSL) as r:
             r.raise_for_status()
             total = int(r.headers.get("content-length", 0))
             downloaded = 0
