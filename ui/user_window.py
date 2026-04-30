@@ -7,190 +7,243 @@ from core.zip_ops import extract_and_install_zip, find_xll_in_folder
 from core.registry_ops import point_excel_to_addin
 from core.system_ops import launch_excel, close_excel, kill_excel
 from ui.log_viewer import LogViewer
+import ui.theme as T
+
+
+def _lbl(parent, text="", muted=False, bold=False, tiny=False, **kw):
+    bg   = kw.pop("bg", T.BG_CARD)
+    fg   = kw.pop("fg", T.TEXT_MUTED if tiny else T.TEXT_SEC if muted else T.TEXT_PRI)
+    font = kw.pop("font", T.F_TINY if tiny else T.F_BOLD if bold else T.F_UI)
+    return tk.Label(parent, text=text, bg=bg, fg=fg, font=font, **kw)
+
+
+def _btn(parent, text, cmd, style="normal", **kw):
+    _s = {
+        "normal":  (T.BG_INPUT, T.TEXT_PRI, T.BORDER),
+        "accent":  (T.ACCENT,   "#000000",  T.ACCENT_DIM),
+        "danger":  ("#5a1f1f",  "#ff8080",  "#7a2f2f"),
+        "ghost":   (T.BG_CARD,  T.TEXT_SEC, T.BG_INPUT),
+    }
+    bg, fg, abg = _s.get(style, _s["normal"])
+    padx = kw.pop("padx", 10)
+    pady = kw.pop("pady", 6)
+    return tk.Button(parent, text=text, command=cmd,
+                     bg=bg, fg=fg, activebackground=abg, activeforeground=fg,
+                     relief="flat", bd=0, padx=padx, pady=pady,
+                     cursor="hand2", font=T.F_UI, **kw)
+
+
+def _card(parent, title=""):
+    f = tk.Frame(parent, bg=T.BG_CARD)
+    if title:
+        tk.Label(f, text=title, fg=T.TEXT_SEC, bg=T.BG_CARD,
+                 font=T.F_SMALL).pack(anchor="w", padx=14, pady=(10, 2))
+    return f
 
 
 class UserWindow:
-    def __init__(self, root):
+    def __init__(self, root: tk.Toplevel):
         self.root = root
-        self.root.title("FOXL Add-In Helper")
-        self.root.geometry("400x560")
+        self.root.title("FOXL  AddIn Manager  —  User")
+        self.root.geometry("460x600")
         self.root.resizable(False, False)
+        T.apply(root)
 
-        self.env_var = tk.StringVar()
-        self.current_version_var = tk.StringVar(value="Not set")
-        self.zip_path_var = tk.StringVar()
+        self.env_var         = tk.StringVar()
+        self.current_ver_var = tk.StringVar(value="Not set")
+        self.zip_path_var    = tk.StringVar()
         self.target_name_var = tk.StringVar(value=r"_91ExcelAddIn\DEV")
         self.folder_path_var = tk.StringVar()
 
-        self.create_widgets()
-        self.sync_ui_with_env()
+        self._build()
+        self._sync_env()
 
-    def create_widgets(self):
-        # --- Environment Section ---
-        env_frame = ttk.LabelFrame(self.root, text="Environment Selection", padding=(10, 10))
-        env_frame.pack(fill="x", padx=10, pady=10)
-        env_frame.columnconfigure(1, weight=1)
+    def _build(self):
+        self.root.configure(bg=T.BG_MAIN)
 
-        ttk.Label(env_frame, text="Current ENV:").grid(row=0, column=0, sticky="w", pady=5)
-        self.env_dd = ttk.Combobox(env_frame, textvariable=self.env_var,
-                                   values=["Prod", "UAT", "Dev", "local"], state="readonly", width=15)
-        self.env_dd.grid(row=0, column=1, padx=(10, 0), pady=5, sticky="ew")
+        # ── Topbar ────────────────────────────────────────────────────────────
+        topbar = tk.Frame(self.root, bg=T.BG_DARK, height=48)
+        topbar.pack(fill="x")
+        topbar.pack_propagate(False)
+        logo_f = tk.Frame(topbar, bg=T.BG_DARK)
+        logo_f.pack(side="left", padx=16, pady=10)
+        tk.Label(logo_f, text="★", fg=T.ACCENT, bg=T.BG_DARK,
+                 font=("Segoe UI", 12, "bold")).pack(side="left")
+        name_f = tk.Frame(logo_f, bg=T.BG_DARK)
+        name_f.pack(side="left", padx=(6, 0))
+        tk.Label(name_f, text="FOXL", fg=T.TEXT_PRI, bg=T.BG_DARK,
+                 font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        tk.Label(name_f, text="USER VIEW", fg=T.TEXT_SEC, bg=T.BG_DARK,
+                 font=("Segoe UI", 6)).pack(anchor="w")
 
-        ttk.Label(env_frame, text="Current VERSION:").grid(row=1, column=0, sticky="w", pady=5)
-        ttk.Label(env_frame, textvariable=self.current_version_var,
-                  font=("TkDefaultFont", 9, "bold")).grid(row=1, column=1, sticky="w", padx=10, pady=5)
+        # Excel quick buttons
+        xl_f = tk.Frame(topbar, bg=T.BG_DARK)
+        xl_f.pack(side="right", padx=12)
+        for lbl, cmd, danger in [
+            ("Open",  self.do_launch_excel, False),
+            ("Close", self.do_close_excel,  False),
+            ("Kill",  self.do_kill_excel,   True),
+        ]:
+            tk.Button(xl_f, text=lbl,
+                      bg=T.BG_INPUT, fg=T.ERROR if danger else T.TEXT_PRI,
+                      activebackground=T.BORDER, relief="flat", bd=0,
+                      padx=10, pady=4, cursor="hand2", font=T.F_UI,
+                      command=cmd).pack(side="left", padx=2)
 
-        ttk.Button(env_frame, text="Update Environment", command=self.save_env).grid(
-            row=2, column=0, columnspan=2, pady=(10, 0), sticky="ew")
+        # ── Body ──────────────────────────────────────────────────────────────
+        body = tk.Frame(self.root, bg=T.BG_MAIN)
+        body.pack(fill="both", expand=True, padx=16, pady=12)
 
-        # --- Install Local Build Section ---
-        install_frame = ttk.LabelFrame(self.root, text="Install Local Build", padding=(10, 10))
-        install_frame.pack(fill="x", padx=10, pady=5)
-        install_frame.columnconfigure(1, weight=1)
+        # Environment card
+        env_c = _card(body, "Environment")
+        env_c.pack(fill="x", pady=(0, 8))
 
-        # -- From ZIP --
-        ttk.Label(install_frame, text="Zip File:").grid(row=0, column=0, sticky="w", pady=5)
-        ttk.Entry(install_frame, textvariable=self.zip_path_var, width=22, state="readonly").grid(
-            row=0, column=1, padx=5, pady=5, sticky="ew")
-        ttk.Button(install_frame, text="Browse...", command=self.browse_zip).grid(
-            row=0, column=2, padx=5, pady=5)
+        _lbl(env_c, "CURRENT ENV", tiny=True).pack(anchor="w", padx=14, pady=(4, 3))
+        dd_row = tk.Frame(env_c, bg=T.BG_CARD)
+        dd_row.pack(fill="x", padx=14, pady=(0, 8))
+        self.env_dd = ttk.Combobox(dd_row, textvariable=self.env_var,
+                                   values=["Prod", "UAT", "Dev", "local"],
+                                   state="readonly", width=18)
+        self.env_dd.pack(side="left", padx=(0, 10))
+        _btn(dd_row, "⚡  Apply", self.save_env, style="accent").pack(side="left")
 
-        ttk.Label(install_frame, text="Folder Name:").grid(row=1, column=0, sticky="w", pady=5)
-        ttk.Entry(install_frame, textvariable=self.target_name_var, width=22).grid(
-            row=1, column=1, padx=5, pady=5, sticky="ew")
+        _lbl(env_c, "CURRENT VERSION", tiny=True).pack(anchor="w", padx=14, pady=(0, 3))
+        _lbl(env_c, bg=T.BG_CARD, textvariable=self.current_ver_var,
+             bold=True).pack(anchor="w", padx=14, pady=(0, 10))
 
-        ttk.Button(install_frame, text="Extract & Point Excel to Build",
-                   command=self.install_from_zip).grid(row=2, column=0, columnspan=3, pady=(5, 8), sticky="ew")
+        # Install card
+        inst_c = _card(body, "Install Local Build")
+        inst_c.pack(fill="x", pady=(0, 8))
 
-        # -- Separator --
-        sep_frame = ttk.Frame(install_frame)
-        sep_frame.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(0, 6))
-        ttk.Separator(sep_frame, orient="horizontal").pack(side="left", fill="x", expand=True, pady=6)
-        ttk.Label(sep_frame, text=" or use an already-extracted folder ",
-                  foreground="grey").pack(side="left")
-        ttk.Separator(sep_frame, orient="horizontal").pack(side="left", fill="x", expand=True, pady=6)
+        # From ZIP
+        _lbl(inst_c, "FROM ZIP", tiny=True).pack(anchor="w", padx=14, pady=(4, 3))
 
-        # -- From Folder --
-        ttk.Label(install_frame, text="Folder:").grid(row=4, column=0, sticky="w", pady=5)
-        ttk.Entry(install_frame, textvariable=self.folder_path_var, width=22, state="readonly").grid(
-            row=4, column=1, padx=5, pady=5, sticky="ew")
-        ttk.Button(install_frame, text="Browse...", command=self.browse_folder).grid(
-            row=4, column=2, padx=5, pady=5)
+        zip_row = tk.Frame(inst_c, bg=T.BG_CARD)
+        zip_row.pack(fill="x", padx=14, pady=(0, 4))
+        zip_row.columnconfigure(0, weight=1)
+        ttk.Entry(zip_row, textvariable=self.zip_path_var, state="readonly").grid(
+            row=0, column=0, sticky="ew", padx=(0, 6))
+        _btn(zip_row, "Browse…", self.browse_zip, pady=4).grid(row=0, column=1)
 
-        ttk.Button(install_frame, text="Point Excel to Extracted Build",
-                   command=self.install_from_folder).grid(row=5, column=0, columnspan=3, pady=(5, 8), sticky="ew")
+        name_row = tk.Frame(inst_c, bg=T.BG_CARD)
+        name_row.pack(fill="x", padx=14, pady=(0, 6))
+        name_row.columnconfigure(0, weight=1)
+        _lbl(name_row, "Folder name:", muted=True, bg=T.BG_CARD).grid(
+            row=0, column=0, sticky="w", padx=(0, 8))
+        ttk.Entry(name_row, textvariable=self.target_name_var, width=24).grid(
+            row=0, column=1, sticky="ew")
 
-        # -- Shared revert --
-        ttk.Button(install_frame, text="Revert to Standard FOXL Loader",
-                   command=self.revert_loader).grid(row=6, column=0, columnspan=3, sticky="ew")
+        _btn(inst_c, "Extract & Point Excel to Build", self.install_from_zip,
+             style="accent").pack(fill="x", padx=14, pady=(0, 10))
 
-        # --- Excel Controls Section ---
-        excel_frame = ttk.LabelFrame(self.root, text="Excel Controls", padding=(10, 10))
-        excel_frame.pack(fill="x", padx=10, pady=10)
+        # Divider
+        div = tk.Frame(inst_c, bg=T.BG_CARD)
+        div.pack(fill="x", padx=14, pady=(0, 8))
+        tk.Frame(div, bg=T.BORDER, height=1).pack(side="left", fill="x", expand=True)
+        tk.Label(div, text="  or use an extracted folder  ",
+                 fg=T.TEXT_MUTED, bg=T.BG_CARD, font=T.F_SMALL).pack(side="left")
+        tk.Frame(div, bg=T.BORDER, height=1).pack(side="left", fill="x", expand=True)
 
-        btn_container = ttk.Frame(excel_frame)
-        btn_container.pack(fill="x")
+        # From Folder
+        fld_row = tk.Frame(inst_c, bg=T.BG_CARD)
+        fld_row.pack(fill="x", padx=14, pady=(0, 6))
+        fld_row.columnconfigure(0, weight=1)
+        ttk.Entry(fld_row, textvariable=self.folder_path_var, state="readonly").grid(
+            row=0, column=0, sticky="ew", padx=(0, 6))
+        _btn(fld_row, "Browse…", self.browse_folder, pady=4).grid(row=0, column=1)
 
-        ttk.Button(btn_container, text="Open Excel",
-                   command=self.do_launch_excel).pack(side="left", expand=True, fill="x", padx=(0, 2))
-        ttk.Button(btn_container, text="Close Safely",
-                   command=self.do_close_excel).pack(side="left", expand=True, fill="x", padx=2)
-        ttk.Button(btn_container, text="Force Kill",
-                   command=self.do_kill_excel).pack(side="right", expand=True, fill="x", padx=(2, 0))
+        _btn(inst_c, "Point Excel to Extracted Build", self.install_from_folder).pack(
+            fill="x", padx=14, pady=(0, 8))
 
-        # --- Support Logs ---
-        ttk.Button(self.root, text="View Support Logs", command=self.open_log_viewer).pack(
-            fill="x", padx=10, pady=(0, 10))
+        # Revert
+        tk.Frame(inst_c, bg=T.BORDER, height=1).pack(fill="x", padx=14)
+        _btn(inst_c, "Revert to Standard FOXL Loader", self.revert_loader,
+             style="ghost").pack(fill="x", padx=14, pady=(6, 12))
 
-    # --- Actions ---
-    def sync_ui_with_env(self):
+        # Support Logs button
+        _btn(body, "⊕  View Support Logs", self.open_log_viewer).pack(
+            fill="x", pady=(0, 4))
+
+    # ── Actions ───────────────────────────────────────────────────────────────
+
+    def _sync_env(self):
         e, v = read_env()
         self.env_var.set(e)
-        self.current_version_var.set(v)
+        self.current_ver_var.set(v)
 
     def save_env(self):
         val = self.env_var.get()
-        success, msg = update_env_param("ENV", val)
-        if success:
-            messagebox.showinfo("Success", f"Environment updated to: {val}")
+        ok, msg = update_env_param("ENV", val)
+        if ok:
+            messagebox.showinfo("Updated", f"Environment updated to: {val}")
         else:
             messagebox.showerror("Error", msg)
 
     def browse_zip(self):
-        filepath = filedialog.askopenfilename(
-            title="Select FOXL Build Zip",
-            filetypes=[("Zip files", "*.zip"), ("All files", "*.*")])
-        if filepath:
-            self.zip_path_var.set(filepath)
+        p = filedialog.askopenfilename(title="Select FOXL Build Zip",
+                                       filetypes=[("Zip files", "*.zip"), ("All files", "*.*")])
+        if p:
+            self.zip_path_var.set(p)
 
     def browse_folder(self):
-        folder = filedialog.askdirectory(title="Select Extracted Build Folder")
-        if folder:
-            self.folder_path_var.set(folder)
+        p = filedialog.askdirectory(title="Select Extracted Build Folder")
+        if p:
+            self.folder_path_var.set(p)
 
     def install_from_zip(self):
         zip_path = self.zip_path_var.get()
-        target_name = self.target_name_var.get().strip()
-
+        target   = self.target_name_var.get().strip()
         if not zip_path:
-            messagebox.showwarning("Warning", "Please select a zip file first.")
+            messagebox.showwarning("Warning", "Select a zip file first.")
             return
-        if not target_name:
-            messagebox.showwarning("Warning", "Please provide a folder name (e.g., DEV, UAT, v1.2).")
+        if not target:
+            messagebox.showwarning("Warning", "Enter a folder name (e.g. DEV, v1.2).")
             return
-
-        ext_success, ext_msg, final_xll_path = extract_and_install_zip(zip_path, target_name)
-        if not ext_success:
-            messagebox.showerror("Extraction Error", ext_msg)
+        ok, msg, xll = extract_and_install_zip(zip_path, target)
+        if not ok:
+            messagebox.showerror("Extraction Error", msg)
             return
-
-        reg_success, reg_msg = point_excel_to_addin(final_xll_path)
-        if not reg_success:
-            messagebox.showerror("Registry Error", reg_msg)
+        ok2, msg2 = point_excel_to_addin(xll)
+        if not ok2:
+            messagebox.showerror("Registry Error", msg2)
             return
-
-        messagebox.showinfo("Success", f"Build extracted and configured successfully!\n\n{reg_msg}")
+        messagebox.showinfo("Done", f"Build extracted and configured.\n\n{msg2}")
 
     def install_from_folder(self):
         folder = self.folder_path_var.get()
         if not folder:
-            messagebox.showwarning("Warning", "Please select an extracted build folder first.")
+            messagebox.showwarning("Warning", "Select a folder first.")
             return
-
-        found, result = find_xll_in_folder(folder)
-        if not found:
+        ok, result = find_xll_in_folder(folder)
+        if not ok:
             messagebox.showerror("Error", result)
             return
-
-        reg_success, reg_msg = point_excel_to_addin(result)
-        if not reg_success:
-            messagebox.showerror("Registry Error", reg_msg)
+        ok2, msg2 = point_excel_to_addin(result)
+        if not ok2:
+            messagebox.showerror("Registry Error", msg2)
             return
-
-        messagebox.showinfo("Success", f"Excel pointed to extracted build successfully!\n\n{reg_msg}")
+        messagebox.showinfo("Done", f"Excel pointed to build.\n\n{msg2}")
 
     def revert_loader(self):
-        reg_success, reg_msg = point_excel_to_addin(FOXL_LOADER_PATH)
-        if reg_success:
+        ok, msg = point_excel_to_addin(FOXL_LOADER_PATH)
+        if ok:
             messagebox.showinfo("Reverted",
-                                f"Successfully pointed Excel back to the standard loader:\n\n{FOXL_LOADER_PATH}")
+                                f"Pointed Excel back to standard loader:\n\n{FOXL_LOADER_PATH}")
         else:
-            messagebox.showerror("Registry Error", reg_msg)
+            messagebox.showerror("Registry Error", msg)
 
     def open_log_viewer(self):
         LogViewer(self.root).grab_set()
 
-    # --- Excel Operations ---
     def do_launch_excel(self):
-        success, msg = launch_excel()
-        if not success: messagebox.showerror("Error", msg)
+        ok, err = launch_excel()
+        if not ok: messagebox.showerror("Error", err)
 
     def do_close_excel(self):
-        success, msg = close_excel()
-        if not success: messagebox.showerror("Error", msg)
+        ok, err = close_excel()
+        if not ok: messagebox.showerror("Error", err)
 
     def do_kill_excel(self):
-        if messagebox.askyesno("Confirm Force Kill",
-                               "This will instantly kill Excel. Any unsaved work will be lost. Continue?"):
-            success, msg = kill_excel()
-            if not success: messagebox.showerror("Error", msg)
+        if messagebox.askyesno("Force Kill", "Kill Excel? Unsaved work will be lost."):
+            ok, err = kill_excel()
+            if not ok: messagebox.showerror("Error", err)

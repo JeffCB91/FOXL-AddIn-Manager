@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog
 import json
 import os
 import threading
@@ -9,387 +9,408 @@ from core.log_ops import (
     get_log_files, get_services, extract_service,
     generate_unified_timeline, export_logs_to_zip,
 )
+import ui.theme as T
 
-# Keyword → (tag name, foreground colour)
-_HL_KEYWORDS = {
-    'ERROR': ('hl_error', '#e05252'),
-    'WARN':  ('hl_warn',  '#c8960c'),
-    'INFO':  ('hl_info',  '#5b9bd5'),
+_HL = {
+    "ERROR": (T.ERROR, "hl_err"),
+    "WARN":  (T.WARN,  "hl_warn"),
+    "INFO":  (T.INFO,  "hl_info"),
 }
+
+
+def _btn(parent, text, cmd, style="normal", **kw):
+    _s = {
+        "normal": (T.BG_INPUT, T.TEXT_PRI, T.BORDER),
+        "ghost":  (T.BG_CARD,  T.TEXT_SEC, T.BG_INPUT),
+    }
+    bg, fg, abg = _s.get(style, _s["normal"])
+    padx = kw.pop("padx", 8)
+    pady = kw.pop("pady", 5)
+    return tk.Button(parent, text=text, command=cmd,
+                     bg=bg, fg=fg, activebackground=abg, activeforeground=fg,
+                     relief="flat", bd=0, padx=padx, pady=pady,
+                     cursor="hand2", font=T.F_UI, **kw)
 
 
 class LogViewer(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("FOXL Support Log Viewer")
-        self.geometry("900x640")
+        self.geometry("1000x680")
+        T.apply(self)
 
-        self.log_files = get_log_files(LOG_DIR_PATH)
-        self._service_filter = None   # None = all services; otherwise the raw service name
-        self._service_map = {}        # display name → raw name (populated in load_data)
-        self._last_entries = []       # most-recently-loaded (timestamp, text) list
-        self._search_positions = []   # list of Tkinter index strings for current matches
-        self._search_idx = -1
-        self._search_query = ""
+        self.log_files         = get_log_files(LOG_DIR_PATH)
+        self._service_filter   = None
+        self._service_map: dict = {}
+        self._last_entries: list = []
+        self._search_hits: list  = []
+        self._search_idx         = -1
+        self._search_q           = ""
 
-        self.create_widgets()
+        self._build()
         self.load_data()
 
-    # ------------------------------------------------------------------
-    # Widget construction
-    # ------------------------------------------------------------------
+    # ── Build ──────────────────────────────────────────────────────────────────
 
-    def create_widgets(self):
-        # --- Toolbar ---
-        toolbar = ttk.Frame(self, padding=(10, 5))
-        toolbar.pack(fill="x")
+    def _build(self):
+        self.configure(bg=T.BG_MAIN)
 
-        ttk.Button(toolbar, text="Copy Selected", command=self.copy_selection).pack(side="left", padx=2)
-        ttk.Button(toolbar, text="Copy All", command=self.copy_all).pack(side="left", padx=2)
-        ttk.Button(toolbar, text="Prettify Selected JSON", command=self.prettify_json).pack(side="left", padx=(10, 2))
-        ttk.Button(toolbar, text="Refresh", command=self.refresh).pack(side="left", padx=(10, 2))
-        ttk.Button(toolbar, text="Compress & Save Logs for Support", command=self.export_zip).pack(side="right", padx=2)
+        # Topbar
+        topbar = tk.Frame(self, bg=T.BG_DARK, height=48)
+        topbar.pack(fill="x")
+        topbar.pack_propagate(False)
+        logo_f = tk.Frame(topbar, bg=T.BG_DARK)
+        logo_f.pack(side="left", padx=16, pady=10)
+        tk.Label(logo_f, text="★", fg=T.ACCENT, bg=T.BG_DARK,
+                 font=("Segoe UI", 12, "bold")).pack(side="left")
+        tk.Label(logo_f, text="  FOXL Support Log Viewer", fg=T.TEXT_PRI, bg=T.BG_DARK,
+                 font=("Segoe UI", 10, "bold")).pack(side="left")
 
-        # --- Filter Bar ---
-        filter_bar = ttk.Frame(self, padding=(10, 3))
-        filter_bar.pack(fill="x")
+        right_tb = tk.Frame(topbar, bg=T.BG_DARK)
+        right_tb.pack(side="right", padx=12)
+        _btn(right_tb, "⊞  Compress & Save Logs for Support",
+             self.export_zip).pack(side="right", padx=(6, 0))
+        _btn(right_tb, "↺  Refresh", self.refresh,
+             style="ghost").pack(side="right")
 
-        ttk.Label(filter_bar, text="Service:").pack(side="left")
+        # Filter bar
+        fb = tk.Frame(self, bg=T.BG_CARD)
+        fb.pack(fill="x", padx=16, pady=(12, 0))
+
+        fb_inner = tk.Frame(fb, bg=T.BG_CARD)
+        fb_inner.pack(fill="x", padx=14, pady=8)
+
+        tk.Label(fb_inner, text="SERVICE", fg=T.TEXT_MUTED, bg=T.BG_CARD,
+                 font=T.F_TINY).pack(side="left")
         self.service_var = tk.StringVar(value="All Services")
-        self.service_dd = ttk.Combobox(filter_bar, textvariable=self.service_var, state="readonly", width=16)
-        self.service_dd.pack(side="left", padx=(3, 12))
+        self.service_dd = ttk.Combobox(fb_inner, textvariable=self.service_var,
+                                       state="readonly", width=16)
+        self.service_dd.pack(side="left", padx=(4, 16))
         self.service_dd.bind("<<ComboboxSelected>>", self._on_service_change)
 
-        ttk.Label(filter_bar, text="Order:").pack(side="left")
+        tk.Label(fb_inner, text="ORDER", fg=T.TEXT_MUTED, bg=T.BG_CARD,
+                 font=T.F_TINY).pack(side="left")
         self.order_var = tk.StringVar(value="Oldest First")
-        order_dd = ttk.Combobox(filter_bar, textvariable=self.order_var,
-                                values=["Oldest First", "Newest First"],
-                                state="readonly", width=12)
-        order_dd.pack(side="left", padx=(3, 12))
-        order_dd.bind("<<ComboboxSelected>>", self._on_order_change)
+        ttk.Combobox(fb_inner, textvariable=self.order_var,
+                     values=["Oldest First", "Newest First"],
+                     state="readonly", width=12).pack(side="left", padx=(4, 16))
+        self.order_var.trace_add("write", lambda *_: self._reload_unified())
 
-        ttk.Label(filter_bar, text="Find:").pack(side="left")
+        tk.Label(fb_inner, text="FIND", fg=T.TEXT_MUTED, bg=T.BG_CARD,
+                 font=T.F_TINY).pack(side="left")
         self.search_var = tk.StringVar()
-        self.search_entry = ttk.Entry(filter_bar, textvariable=self.search_var, width=24)
-        self.search_entry.pack(side="left", padx=(3, 2))
+        self.search_entry = ttk.Entry(fb_inner, textvariable=self.search_var, width=24)
+        self.search_entry.pack(side="left", padx=(4, 2))
         self.search_entry.bind("<Return>", self._search)
-        ttk.Button(filter_bar, text="▲", width=2, command=self._find_prev).pack(side="left", padx=1)
-        ttk.Button(filter_bar, text="▼", width=2, command=self._find_next).pack(side="left", padx=1)
+        _btn(fb_inner, "▲", self._find_prev, padx=6, pady=3).pack(side="left", padx=1)
+        _btn(fb_inner, "▼", self._find_next, padx=6, pady=3).pack(side="left", padx=1)
+        self.bind("<Control-f>", lambda _: self.search_entry.focus_set())
 
-        self.bind("<Control-f>", self._focus_search)
+        # Toggle
+        self._view_mode = tk.StringVar(value="Timeline")
+        self._toggle_btns: dict[str, tk.Button] = {}
+        tog_f = tk.Frame(fb_inner, bg=T.BG_CARD)
+        tog_f.pack(side="right")
+        for mode in ("Timeline", "File View"):
+            b = tk.Button(tog_f, text=mode, relief="flat", bd=0,
+                          padx=10, pady=4, cursor="hand2", font=T.F_UI,
+                          command=lambda m=mode: self._set_view(m))
+            b.pack(side="left", padx=1)
+            self._toggle_btns[mode] = b
 
-        # --- Tabs ---
-        self.nb = ttk.Notebook(self)
-        self.nb.pack(fill="both", expand=True, padx=10, pady=5)
-        self.nb.bind("<<NotebookTabChanged>>", self._on_tab_change)
+        # Content area
+        content = tk.Frame(self, bg=T.BG_CARD)
+        content.pack(fill="both", expand=True, padx=16, pady=(6, 0))
+        content.rowconfigure(0, weight=1)
+        content.columnconfigure(0, weight=1)
 
-        # Tab 1: Unified Timeline
-        self.tab_unified = ttk.Frame(self.nb)
-        self.nb.add(self.tab_unified, text="Unified Timeline")
-        self.txt_unified = scrolledtext.ScrolledText(self.tab_unified, wrap=tk.WORD, font=("Consolas", 9))
-        self.txt_unified.pack(fill="both", expand=True, padx=5, pady=5)
+        # Timeline frame
+        self._tl_frame = tk.Frame(content, bg=T.BG_CARD)
+        self._tl_frame.rowconfigure(0, weight=1)
+        self._tl_frame.columnconfigure(0, weight=1)
 
-        # Tab 2: File View
-        self.tab_file = ttk.Frame(self.nb)
-        self.nb.add(self.tab_file, text="File View")
+        self.txt_unified = tk.Text(self._tl_frame, bg=T.BG_CARD, fg=T.TEXT_PRI,
+                                   font=T.F_MONO, relief="flat", bd=0,
+                                   state="disabled", wrap="none",
+                                   selectbackground=T.BG_INPUT)
+        tl_sby = ttk.Scrollbar(self._tl_frame, orient="vertical",  command=self.txt_unified.yview)
+        tl_sbx = ttk.Scrollbar(self._tl_frame, orient="horizontal", command=self.txt_unified.xview)
+        self.txt_unified.configure(yscrollcommand=tl_sby.set, xscrollcommand=tl_sbx.set)
+        self.txt_unified.grid(row=0, column=0, sticky="nsew")
+        tl_sby.grid(row=0, column=1, sticky="ns")
+        tl_sbx.grid(row=1, column=0, sticky="ew")
 
-        file_ctrl = ttk.Frame(self.tab_file)
-        file_ctrl.pack(fill="x", padx=5, pady=5)
-        ttk.Label(file_ctrl, text="Select Log File:").pack(side="left", padx=5)
+        # File View frame
+        self._fv_frame = tk.Frame(content, bg=T.BG_CARD)
+        self._fv_frame.rowconfigure(1, weight=1)
+        self._fv_frame.columnconfigure(0, weight=1)
+
+        fv_ctrl = tk.Frame(self._fv_frame, bg=T.BG_CARD)
+        fv_ctrl.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        tk.Label(fv_ctrl, text="File:", fg=T.TEXT_SEC, bg=T.BG_CARD,
+                 font=T.F_UI).pack(side="left", padx=(0, 6))
         self.file_var = tk.StringVar()
-        self.file_dd = ttk.Combobox(file_ctrl, textvariable=self.file_var, state="readonly", width=50)
-        self.file_dd.pack(side="left", padx=5)
+        self.file_dd  = ttk.Combobox(fv_ctrl, textvariable=self.file_var,
+                                     state="readonly", width=52)
+        self.file_dd.pack(side="left")
         self.file_dd.bind("<<ComboboxSelected>>", self.on_file_select)
 
-        self.txt_file = scrolledtext.ScrolledText(self.tab_file, wrap=tk.WORD, font=("Consolas", 9))
-        self.txt_file.pack(fill="both", expand=True, padx=5, pady=5)
+        self.txt_file = tk.Text(self._fv_frame, bg=T.BG_CARD, fg=T.TEXT_PRI,
+                                font=T.F_MONO, relief="flat", bd=0,
+                                state="disabled", selectbackground=T.BG_INPUT)
+        fv_sb = ttk.Scrollbar(self._fv_frame, orient="vertical", command=self.txt_file.yview)
+        self.txt_file.configure(yscrollcommand=fv_sb.set)
+        self.txt_file.grid(row=1, column=0, sticky="nsew")
+        fv_sb.grid(row=1, column=1, sticky="ns")
 
-        # --- Status Bar ---
-        self.status_var = tk.StringVar(value="Loading...")
-        ttk.Label(self, textvariable=self.status_var, relief="sunken",
-                  anchor="w", padding=(6, 2)).pack(fill="x", padx=10, pady=(0, 5))
+        # Status bar
+        self.status_var = tk.StringVar(value="Loading…")
+        status_bar = tk.Frame(self, bg=T.BG_DARK, height=28)
+        status_bar.pack(fill="x", padx=16, pady=(0, 16))
+        status_bar.pack_propagate(False)
+        tk.Label(status_bar, textvariable=self.status_var,
+                 fg=T.TEXT_SEC, bg=T.BG_DARK, font=T.F_SMALL,
+                 anchor="w").pack(side="left", padx=12, pady=6)
 
-    # ------------------------------------------------------------------
-    # Data loading
-    # ------------------------------------------------------------------
+        # Toolbar (copy/prettify) in status bar
+        for lbl, cmd in [("Copy Selected", self.copy_selection),
+                         ("Copy All",       self.copy_all),
+                         ("Prettify JSON",  self.prettify_json)]:
+            _btn(status_bar, lbl, cmd, style="ghost", pady=3).pack(side="right", padx=4)
+
+        self._set_view("Timeline")
+
+    # ── View toggle ────────────────────────────────────────────────────────────
+
+    def _set_view(self, mode: str):
+        self._view_mode.set(mode)
+        for m, btn in self._toggle_btns.items():
+            btn.config(bg=T.ACCENT if m == mode else T.BG_INPUT,
+                       fg="#000000" if m == mode else T.TEXT_SEC,
+                       font=T.F_BOLD if m == mode else T.F_UI)
+        content = self._tl_frame.master
+        if mode == "Timeline":
+            self._fv_frame.grid_remove()
+            self._tl_frame.grid(row=0, column=0, sticky="nsew", padx=14, pady=(4, 0))
+        else:
+            self._tl_frame.grid_remove()
+            self._fv_frame.grid(row=0, column=0, sticky="nsew", padx=14, pady=(4, 0))
+
+    # ── Data loading ───────────────────────────────────────────────────────────
 
     def load_data(self):
-        """Full reload: rebuilds service list, file dropdown, and unified timeline."""
         services = get_services(self.log_files)
         self._service_map = {"All Services": None}
-        self._service_map.update({display: raw for raw, display in services})
-        self.service_dd['values'] = list(self._service_map.keys())
+        self._service_map.update({d: r for r, d in services})
+        self.service_dd["values"] = list(self._service_map.keys())
         self.service_var.set("All Services")
         self._service_filter = None
-
         self._reload_file_dropdown()
         self._reload_unified()
 
-    def _get_filtered_files(self):
-        """Returns log_files restricted to the current service filter."""
+    def _get_filtered(self):
         if self._service_filter is None:
             return self.log_files
         return [f for f in self.log_files
                 if extract_service(os.path.basename(f)) == self._service_filter]
 
     def _reload_unified(self):
-        """Kicks off a background thread to rebuild the unified timeline."""
-        self.txt_unified.delete(1.0, tk.END)
-        self.txt_unified.insert(tk.END, "Compiling unified timeline...\n")
-        self.status_var.set("Loading...")
+        self.txt_unified.configure(state="normal")
+        self.txt_unified.delete("1.0", tk.END)
+        self.txt_unified.insert(tk.END, "Compiling unified timeline…\n")
+        self.txt_unified.configure(state="disabled")
+        self.status_var.set("Loading…")
         threading.Thread(target=self._load_unified_bg, daemon=True).start()
 
     def _load_unified_bg(self):
-        """Background worker — must not touch Tkinter widgets directly."""
-        filtered_files = self._get_filtered_files()
-        reverse = (self.order_var.get() == "Newest First")
-        entries, errors = generate_unified_timeline(filtered_files, reverse=reverse)
+        files   = self._get_filtered()
+        reverse = self.order_var.get() == "Newest First"
+        entries, errors = generate_unified_timeline(files, reverse=reverse)
         self._last_entries = entries
-
-        if entries:
-            data = "".join(e[1] for e in entries)
-        else:
-            data = "No logs found or unable to parse timestamps."
-
+        data = "".join(t for _, t in entries) if entries else "No logs found."
         if errors:
-            error_lines = "\n".join(f"  {name}: {msg}" for name, msg in errors)
-            data += f"\n\n--- Files with parse errors ---\n{error_lines}\n"
+            data += "\n\n--- Parse errors ---\n" + "\n".join(f"  {n}: {m}" for n, m in errors)
 
-        def _update():
-            self.txt_unified.delete(1.0, tk.END)
+        def upd():
+            self.txt_unified.configure(state="normal")
+            self.txt_unified.delete("1.0", tk.END)
             self.txt_unified.insert(tk.END, data)
-            self._apply_highlights(self.txt_unified)
+            self._apply_hl(self.txt_unified)
+            self.txt_unified.configure(state="disabled")
             self._update_status()
 
-        self.after(0, _update)
+        self.after(0, upd)
 
     def _reload_file_dropdown(self):
-        """Repopulates the File View dropdown based on the current service filter."""
-        filtered = self._get_filtered_files()
-        filenames = [os.path.basename(f) for f in filtered]
-        self.file_dd['values'] = filenames
-        if filenames:
-            self.file_dd.set(filenames[0])
+        files = self._get_filtered()
+        names = [os.path.basename(f) for f in files]
+        self.file_dd["values"] = names
+        if names:
+            self.file_dd.set(names[0])
             self.on_file_select()
         else:
             self.file_dd.set("")
-            self.txt_file.delete(1.0, tk.END)
+            self.txt_file.configure(state="normal")
+            self.txt_file.delete("1.0", tk.END)
+            self.txt_file.configure(state="disabled")
 
     def refresh(self):
-        """Re-discovers log files on disk and reloads everything."""
         self.log_files = get_log_files(LOG_DIR_PATH)
-        self.txt_file.delete(1.0, tk.END)
         self._clear_search()
         self.load_data()
 
-    def on_file_select(self, event=None):
-        selected_name = self.file_var.get()
-        filtered = self._get_filtered_files()
-        target_path = next((f for f in filtered if os.path.basename(f) == selected_name), None)
-
-        self.txt_file.delete(1.0, tk.END)
-        if target_path and os.path.exists(target_path):
+    def on_file_select(self, _=None):
+        name   = self.file_var.get()
+        files  = self._get_filtered()
+        target = next((f for f in files if os.path.basename(f) == name), None)
+        self.txt_file.configure(state="normal")
+        self.txt_file.delete("1.0", tk.END)
+        if target and os.path.exists(target):
             try:
-                with open(target_path, 'r', encoding='utf-8', errors='replace') as f:
+                with open(target, encoding="utf-8", errors="replace") as f:
                     self.txt_file.insert(tk.END, f.read())
-                self._apply_highlights(self.txt_file)
+                self._apply_hl(self.txt_file)
                 self._update_status()
             except OSError as e:
-                self.txt_file.insert(tk.END, f"Could not read file:\n{e}")
+                self.txt_file.insert(tk.END, str(e))
+        self.txt_file.configure(state="disabled")
 
-    # ------------------------------------------------------------------
-    # Filter event handlers
-    # ------------------------------------------------------------------
+    # ── Highlighting ───────────────────────────────────────────────────────────
 
-    def _on_service_change(self, event=None):
-        selected = self.service_var.get()
-        self._service_filter = self._service_map.get(selected)
-        self._clear_search()
-        self._reload_unified()
-        self._reload_file_dropdown()
-
-    def _on_order_change(self, event=None):
-        self._reload_unified()
-
-    def _on_tab_change(self, event=None):
-        self._clear_search()
-        self._update_status()
-
-    # ------------------------------------------------------------------
-    # Keyword highlighting
-    # ------------------------------------------------------------------
-
-    def _apply_highlights(self, txt):
-        """Apply ERROR / WARN / INFO color tags to a text widget."""
-        for keyword, (tag, color) in _HL_KEYWORDS.items():
+    def _apply_hl(self, txt: tk.Text):
+        for kw, (color, tag) in _HL.items():
             txt.tag_config(tag, foreground=color)
-            txt.tag_remove(tag, '1.0', tk.END)
-            start = '1.0'
+            txt.tag_remove(tag, "1.0", tk.END)
+            start = "1.0"
             while True:
-                pos = txt.search(keyword, start, stopindex=tk.END)
-                if not pos:
-                    break
-                end = f"{pos}+{len(keyword)}c"
+                pos = txt.search(kw, start, stopindex=tk.END)
+                if not pos: break
+                end = f"{pos}+{len(kw)}c"
                 txt.tag_add(tag, pos, end)
                 start = end
 
-    # ------------------------------------------------------------------
-    # Search / Find
-    # ------------------------------------------------------------------
+    # ── Search ─────────────────────────────────────────────────────────────────
 
-    def _focus_search(self, event=None):
-        self.search_entry.focus_set()
-        return "break"
+    def _active_txt(self) -> tk.Text:
+        return self.txt_unified if self._view_mode.get() == "Timeline" else self.txt_file
 
-    def _search(self, event=None):
+    def _search(self, _=None):
         self._clear_search_tags()
-        query = self.search_var.get().strip()
-        self._search_query = query
-        if not query:
+        q = self.search_var.get().strip()
+        self._search_q = q
+        self._search_hits = []
+        if not q:
             self._update_status()
             return
-
-        txt = self.get_active_textbox()
-        self._search_positions = []
-        start = '1.0'
+        txt   = self._active_txt()
+        start = "1.0"
         while True:
-            pos = txt.search(query, start, stopindex=tk.END, nocase=True)
-            if not pos:
-                break
-            end = f"{pos}+{len(query)}c"
-            self._search_positions.append(pos)
-            start = end
-
-        txt.tag_config('hl_search', background='#ffff88', foreground='black')
-        for pos in self._search_positions:
-            txt.tag_add('hl_search', pos, f"{pos}+{len(query)}c")
-
-        self._search_idx = 0 if self._search_positions else -1
-        if self._search_positions:
-            self._scroll_to_current(txt)
-
+            pos = txt.search(q, start, stopindex=tk.END, nocase=True)
+            if not pos: break
+            self._search_hits.append(pos)
+            start = f"{pos}+{len(q)}c"
+        txt.tag_config("hl_search", background="#ffff88", foreground="black")
+        for pos in self._search_hits:
+            txt.tag_add("hl_search", pos, f"{pos}+{len(q)}c")
+        self._search_idx = 0 if self._search_hits else -1
+        if self._search_hits:
+            self._scroll_to_cur(txt)
         self._update_status()
 
     def _find_next(self):
-        if not self._search_positions:
-            self._search()
-            return
-        self._search_idx = (self._search_idx + 1) % len(self._search_positions)
-        self._scroll_to_current(self.get_active_textbox())
+        if not self._search_hits: self._search(); return
+        self._search_idx = (self._search_idx + 1) % len(self._search_hits)
+        self._scroll_to_cur(self._active_txt())
         self._update_status()
 
     def _find_prev(self):
-        if not self._search_positions:
-            self._search()
-            return
-        self._search_idx = (self._search_idx - 1) % len(self._search_positions)
-        self._scroll_to_current(self.get_active_textbox())
+        if not self._search_hits: self._search(); return
+        self._search_idx = (self._search_idx - 1) % len(self._search_hits)
+        self._scroll_to_cur(self._active_txt())
         self._update_status()
 
-    def _scroll_to_current(self, txt):
-        if not self._search_positions or self._search_idx < 0:
-            return
-        pos = self._search_positions[self._search_idx]
-        end = f"{pos}+{len(self._search_query)}c"
-        txt.tag_remove('hl_search_cur', '1.0', tk.END)
-        txt.tag_config('hl_search_cur', background='#ff9900', foreground='black')
-        txt.tag_add('hl_search_cur', pos, end)
+    def _scroll_to_cur(self, txt: tk.Text):
+        if not self._search_hits or self._search_idx < 0: return
+        pos = self._search_hits[self._search_idx]
+        q   = self._search_q
+        txt.tag_remove("hl_search_cur", "1.0", tk.END)
+        txt.tag_config("hl_search_cur", background="#ff9900", foreground="black")
+        txt.tag_add("hl_search_cur", pos, f"{pos}+{len(q)}c")
         txt.see(pos)
 
     def _clear_search_tags(self):
         for txt in (self.txt_unified, self.txt_file):
-            for tag in ('hl_search', 'hl_search_cur'):
-                txt.tag_remove(tag, '1.0', tk.END)
+            for tag in ("hl_search", "hl_search_cur"):
+                txt.tag_remove(tag, "1.0", tk.END)
 
     def _clear_search(self):
         self._clear_search_tags()
-        self._search_positions = []
-        self._search_idx = -1
-        self._search_query = ""
+        self._search_hits = []
+        self._search_idx  = -1
+        self._search_q    = ""
 
-    # ------------------------------------------------------------------
-    # Status bar
-    # ------------------------------------------------------------------
+    # ── Status bar ─────────────────────────────────────────────────────────────
 
     def _update_status(self):
-        query = self._search_query
-        if query and self._search_positions:
-            i = self._search_idx + 1
-            n = len(self._search_positions)
-            self.status_var.set(f"{i} of {n} matches for '{query}'")
+        q = self._search_q
+        if q and self._search_hits:
+            self.status_var.set(f"{self._search_idx+1} of {len(self._search_hits)} matches for '{q}'")
             return
-        if query and not self._search_positions:
-            self.status_var.set(f"No matches for '{query}'")
+        if q:
+            self.status_var.set(f"No matches for '{q}'")
             return
-
-        if self.nb.index('current') == 0:
-            entries = self._last_entries
-            if entries:
-                timestamps = [e[0] for e in entries]
-                self.status_var.set(
-                    f"{len(entries)} entries  │  {min(timestamps)}  →  {max(timestamps)}"
-                )
-            else:
-                self.status_var.set("No entries")
+        entries = self._last_entries
+        if entries:
+            ts = [e[0] for e in entries]
+            self.status_var.set(f"{len(entries)} entries  ·  {min(ts)}  →  {max(ts)}")
         else:
-            filename = self.file_var.get()
-            if filename:
-                line_count = int(self.txt_file.index('end-1c').split('.')[0])
-                self.status_var.set(f"{filename}  ({line_count} lines)")
-            else:
-                self.status_var.set("")
+            self.status_var.set("No entries")
 
-    # ------------------------------------------------------------------
-    # Toolbar actions
-    # ------------------------------------------------------------------
+    # ── Filter handlers ────────────────────────────────────────────────────────
 
-    def get_active_textbox(self):
-        return self.txt_unified if self.nb.index("current") == 0 else self.txt_file
+    def _on_service_change(self, _=None):
+        self._service_filter = self._service_map.get(self.service_var.get())
+        self._clear_search()
+        self._reload_unified()
+        self._reload_file_dropdown()
+
+    # ── Toolbar actions ────────────────────────────────────────────────────────
 
     def copy_selection(self):
-        txt = self.get_active_textbox()
+        txt = self._active_txt()
         try:
-            selected = txt.get(tk.SEL_FIRST, tk.SEL_LAST)
             self.clipboard_clear()
-            self.clipboard_append(selected)
+            self.clipboard_append(txt.get(tk.SEL_FIRST, tk.SEL_LAST))
         except tk.TclError:
             messagebox.showwarning("Warning", "No text selected.")
 
     def copy_all(self):
-        txt = self.get_active_textbox()
+        txt = self._active_txt()
         self.clipboard_clear()
-        self.clipboard_append(txt.get(1.0, tk.END))
+        self.clipboard_append(txt.get("1.0", tk.END))
 
     def prettify_json(self):
-        txt = self.get_active_textbox()
+        txt = self._active_txt()
         try:
-            start_idx = txt.index(tk.SEL_FIRST)
-            end_idx = txt.index(tk.SEL_LAST)
-            selected_text = txt.get(start_idx, end_idx)
-            parsed = json.loads(selected_text)
-            pretty_json = json.dumps(parsed, indent=4)
-            txt.delete(start_idx, end_idx)
-            txt.insert(start_idx, pretty_json)
+            s, e   = txt.index(tk.SEL_FIRST), txt.index(tk.SEL_LAST)
+            parsed = json.loads(txt.get(s, e))
+            txt.configure(state="normal")
+            txt.delete(s, e)
+            txt.insert(s, json.dumps(parsed, indent=4))
+            txt.configure(state="disabled")
         except tk.TclError:
-            messagebox.showwarning("Warning", "Please highlight the JSON text you want to format first.")
+            messagebox.showwarning("Warning", "Highlight the JSON text first.")
         except json.JSONDecodeError:
-            messagebox.showerror("Error", "The selected text is not valid JSON.")
+            messagebox.showerror("Error", "Selected text is not valid JSON.")
 
     def export_zip(self):
         if not self.log_files:
             messagebox.showwarning("Warning", "No log files to compress.")
             return
-
         dest = filedialog.asksaveasfilename(
-            title="Save Support Logs",
-            defaultextension=".zip",
+            title="Save Support Logs", defaultextension=".zip",
             initialfile="FOXL_Support_Logs.zip",
-            filetypes=[("Zip files", "*.zip")]
-        )
-
+            filetypes=[("Zip files", "*.zip")])
         if dest:
-            success, msg = export_logs_to_zip(self.log_files, dest)
-            if success:
-                messagebox.showinfo("Success", f"Logs successfully compressed to:\n{dest}")
-            else:
-                messagebox.showerror("Error", f"Failed to compress logs:\n{msg}")
+            ok, msg = export_logs_to_zip(self.log_files, dest)
+            messagebox.showinfo("Done", f"Saved to:\n{dest}") if ok else messagebox.showerror("Error", msg)
